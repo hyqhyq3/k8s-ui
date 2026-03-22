@@ -1,0 +1,8 @@
+{{- if .Values.namespace.create | default true }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s-ui.labels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: k8s-ui
+description: A Helm chart for Kubernetes Web UI
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - ui
+  - dashboard
+home: https://github.com/yangqihuang/k8s-ui
+sources:
+  - https://github.com/yangqihuang/k8s-ui
+maintainers:
+  - name: yangqihuang
+    email: yangqihuang@example.com

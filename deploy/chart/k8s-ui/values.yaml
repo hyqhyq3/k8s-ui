@@ -1,0 +1,122 @@
+# 默认 values 配置
+# 这是 Helm chart 的默认值文件
+
+# 副本数量
+replicaCount: 1
+
+# 镜像配置
+image:
+  repository: k8s-ui
+  pullPolicy: IfNotPresent
+  tag: ""
+
+# 镜像拉取密钥
+imagePullSecrets: []
+
+# 覆盖 Chart 名称
+nameOverride: ""
+fullnameOverride: ""
+
+# 服务账号配置
+serviceAccount:
+  # 是否创建服务账号
+  create: true
+  # 服务账号名称
+  name: ""
+  # 服务账号注解
+  annotations: {}
+
+# RBAC 配置
+rbac:
+  # 是否创建 RBAC 资源
+  create: true
+
+# Pod 注解
+podAnnotations: {}
+
+# Pod 安全上下文
+podSecurityContext: {}
+  # fsGroup: 2000
+
+# 容器安全上下文
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+# 服务配置
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# 资源限制
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# 健康检查
+livenessProbe:
+  enabled: true
+  path: /health
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+readinessProbe:
+  enabled: true
+  path: /health
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+# 自动扩缩容
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Pod 数量
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# 节点亲和性
+nodeSelector: {}
+
+# 容忍度
+tolerations: []
+
+# 亲和性
+affinity: {}
+
+# 环境变量
+env:
+  - name: IN_CLUSTER
+    value: "true"
+  - name: PORT
+    value: "8080"
+
+# Ingress 配置
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: k8s-ui.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: k8s-ui-tls
+  #    hosts:
+  #      - k8s-ui.local
