@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-ui
+  namespace: k8s-ui
+  labels:
+    app: k8s-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-ui
+  template:
+    metadata:
+      labels:
+        app: k8s-ui
+    spec:
+      serviceAccountName: k8s-ui
+      containers:
+        - name: k8s-ui
+          image: k8s-ui:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: IN_CLUSTER
+              value: "true"
+            - name: PORT
+              value: "8080"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
