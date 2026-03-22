@@ -12,7 +12,7 @@ WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/main.go
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o server ./cmd/main.go
 
 # 最终镜像
 FROM alpine:latest

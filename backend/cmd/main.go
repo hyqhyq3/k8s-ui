@@ -24,9 +24,12 @@ func main() {
 	k8sSvc := service.NewK8sService(k8sClient)
 	h := handler.NewHandler(k8sSvc)
 
-	// 初始化 Helm Driver
-	helmDriver := helmdriver.NewDriver(restConfig, k8sClient)
-	helmSvc := service.NewHelmService(helmDriver)
+	// 初始化 Helm CRD Client
+	helmClient, err := helmdriver.NewCRDClient(restConfig)
+	if err != nil {
+		log.Fatalf("Helm CRD 客户端初始化失败: %v", err)
+	}
+	helmSvc := service.NewHelmService(helmClient)
 	helmHandler := handler.NewHelmHandler(helmSvc)
 
 	r := gin.Default()
@@ -58,7 +61,6 @@ func main() {
 		helmAPI.GET("/releases", helmHandler.ListReleases)
 		helmAPI.GET("/releases/:namespace/:name", helmHandler.GetRelease)
 		helmAPI.GET("/releases/:namespace/:name/history", helmHandler.GetReleaseHistory)
-		helmAPI.GET("/releases/:namespace/:name/resources", helmHandler.GetReleaseResources)
 		helmAPI.DELETE("/releases/:namespace/:name", helmHandler.UninstallRelease)
 		helmAPI.POST("/releases/:namespace/:name/rollback", helmHandler.RollbackRelease)
 		helmAPI.POST("/install", helmHandler.InstallRelease)

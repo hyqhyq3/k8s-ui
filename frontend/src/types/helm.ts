@@ -25,13 +25,6 @@ export interface HelmReleaseHistory {
   updated: string
 }
 
-export interface HelmResource {
-  apiVersion: string
-  kind: string
-  name: string
-  namespace: string
-}
-
 export interface HelmRepo {
   name: string
   url: string

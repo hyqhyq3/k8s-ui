@@ -8,11 +8,10 @@ import ValuesViewer from '../components/ValuesViewer'
 import {
   fetchRelease,
   fetchReleaseHistory,
-  fetchReleaseResources,
   uninstallRelease,
   rollbackRelease,
 } from '../api/helm'
-import type { HelmReleaseDetail, HelmReleaseHistory, HelmResource } from '../types/helm'
+import type { HelmReleaseDetail, HelmReleaseHistory } from '../types/helm'
 
 const statusColorMap: Record<string, string> = {
   deployed: 'green',
@@ -23,19 +22,11 @@ const statusColorMap: Record<string, string> = {
   superseded: 'default',
 }
 
-const resourceColumns: ColumnsType<HelmResource> = [
-  { title: 'Kind', dataIndex: 'kind', key: 'kind' },
-  { title: 'Name', dataIndex: 'name', key: 'name', ellipsis: true },
-  { title: 'Namespace', dataIndex: 'namespace', key: 'namespace' },
-  { title: 'API Version', dataIndex: 'apiVersion', key: 'apiVersion', ellipsis: true },
-]
-
 export default function HelmReleaseDetail() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>()
   const navigate = useNavigate()
   const [detail, setDetail] = useState<HelmReleaseDetail | null>(null)
   const [history, setHistory] = useState<HelmReleaseHistory[]>([])
-  const [resources, setResources] = useState<HelmResource[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('info')
   const [upgradeOpen, setUpgradeOpen] = useState(false)
@@ -90,14 +81,12 @@ export default function HelmReleaseDetail() {
     if (!namespace || !name) return
     setLoading(true)
     try {
-      const [detailData, historyData, resourceData] = await Promise.all([
+      const [detailData, historyData] = await Promise.all([
         fetchRelease(namespace, name),
         fetchReleaseHistory(namespace, name).catch(() => []),
-        fetchReleaseResources(namespace, name).catch(() => []),
       ])
       setDetail(detailData)
       setHistory(historyData)
-      setResources(resourceData)
     } catch (err) {
       message.error(`加载 release 详情失败: ${err}`)
     } finally {
@@ -144,19 +133,6 @@ export default function HelmReleaseDetail() {
       key: 'values',
       label: 'Values',
       children: <ValuesViewer content={detail.values || '{}'} />,
-    },
-    {
-      key: 'resources',
-      label: '资源',
-      children: (
-        <Table
-          rowKey={(r) => `${r.kind}/${r.name}`}
-          columns={resourceColumns}
-          dataSource={resources}
-          pagination={false}
-          size="small"
-        />
-      ),
     },
     {
       key: 'history',

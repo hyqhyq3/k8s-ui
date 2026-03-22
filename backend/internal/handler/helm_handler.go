@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yangqihuang/k8s-ui/internal/helm"
 	"github.com/yangqihuang/k8s-ui/internal/service"
 )
 
@@ -37,7 +36,7 @@ func (h *HelmHandler) GetRelease(c *gin.Context) {
 	namespace := c.Param("namespace")
 	name := c.Param("name")
 
-	detail, err := h.helmService.GetRelease(namespace, name)
+	detail, err := h.helmService.GetRelease(c.Request.Context(), namespace, name)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -51,27 +50,13 @@ func (h *HelmHandler) GetReleaseHistory(c *gin.Context) {
 	namespace := c.Param("namespace")
 	name := c.Param("name")
 
-	history, err := h.helmService.GetReleaseHistory(namespace, name)
+	history, err := h.helmService.GetReleaseHistory(c.Request.Context(), namespace, name)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": history})
-}
-
-// GetReleaseResources 获取 release 管理的资源
-func (h *HelmHandler) GetReleaseResources(c *gin.Context) {
-	namespace := c.Param("namespace")
-	name := c.Param("name")
-
-	resources, err := h.helmService.GetReleaseResources(namespace, name)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"data": resources})
 }
 
 // UninstallRelease 卸载 release
@@ -81,7 +66,7 @@ func (h *HelmHandler) UninstallRelease(c *gin.Context) {
 
 	keepHistory := c.Query("keepHistory") == "true"
 
-	if err := h.helmService.UninstallRelease(namespace, name, keepHistory); err != nil {
+	if err := h.helmService.UninstallRelease(c.Request.Context(), namespace, name, keepHistory); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -102,7 +87,7 @@ func (h *HelmHandler) RollbackRelease(c *gin.Context) {
 		return
 	}
 
-	if err := h.helmService.RollbackRelease(namespace, name, req.Revision); err != nil {
+	if err := h.helmService.RollbackRelease(c.Request.Context(), namespace, name, req.Revision); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -112,7 +97,7 @@ func (h *HelmHandler) RollbackRelease(c *gin.Context) {
 
 // InstallRelease 安装 release
 func (h *HelmHandler) InstallRelease(c *gin.Context) {
-	var req helm.InstallOptions
+	var req service.InstallOptions
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求参数: " + err.Error()})
 		return
@@ -137,7 +122,7 @@ func (h *HelmHandler) UpgradeRelease(c *gin.Context) {
 	namespace := c.Param("namespace")
 	name := c.Param("name")
 
-	var req helm.UpgradeOptions
+	var req service.UpgradeOptions
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求参数: " + err.Error()})
 		return
@@ -157,7 +142,7 @@ func (h *HelmHandler) UpgradeRelease(c *gin.Context) {
 
 // ListRepos 列出 chart repo
 func (h *HelmHandler) ListRepos(c *gin.Context) {
-	repos, err := h.helmService.ListRepos()
+	repos, err := h.helmService.ListRepos(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -182,7 +167,7 @@ func (h *HelmHandler) AddRepo(c *gin.Context) {
 		return
 	}
 
-	if err := h.helmService.AddRepo(req.Name, req.URL); err != nil {
+	if err := h.helmService.AddRepo(c.Request.Context(), req.Name, req.URL); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -194,7 +179,7 @@ func (h *HelmHandler) AddRepo(c *gin.Context) {
 func (h *HelmHandler) RemoveRepo(c *gin.Context) {
 	name := c.Param("name")
 
-	if err := h.helmService.RemoveRepo(name); err != nil {
+	if err := h.helmService.RemoveRepo(c.Request.Context(), name); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -212,7 +197,7 @@ func (h *HelmHandler) SearchChart(c *gin.Context) {
 		return
 	}
 
-	results, err := h.helmService.SearchChart(repoName, keyword)
+	results, err := h.helmService.SearchChart(c.Request.Context(), repoName, keyword)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -226,7 +211,7 @@ func (h *HelmHandler) GetChartVersions(c *gin.Context) {
 	repoName := c.Param("repo")
 	chartName := c.Param("chart")
 
-	versions, err := h.helmService.GetChartVersions(repoName, chartName)
+	versions, err := h.helmService.GetChartVersions(c.Request.Context(), repoName, chartName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

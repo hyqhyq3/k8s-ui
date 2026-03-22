@@ -3,7 +3,6 @@ import type {
   HelmRelease,
   HelmReleaseDetail,
   HelmReleaseHistory,
-  HelmResource,
   HelmRepo,
   HelmChartSearchResult,
   HelmChartVersion,
@@ -25,10 +24,6 @@ export function fetchRelease(namespace: string, name: string): Promise<HelmRelea
 
 export function fetchReleaseHistory(namespace: string, name: string): Promise<HelmReleaseHistory[]> {
   return get<HelmReleaseHistory[]>(`/api/v1/helm/releases/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/history`)
-}
-
-export function fetchReleaseResources(namespace: string, name: string): Promise<HelmResource[]> {
-  return get<HelmResource[]>(`/api/v1/helm/releases/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/resources`)
 }
 
 export function uninstallRelease(namespace: string, name: string, keepHistory = false): Promise<void> {

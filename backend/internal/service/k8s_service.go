@@ -331,7 +331,7 @@ func (s *K8sService) GetClusterStats(ctx context.Context) (*ClusterStats, error)
 
 // GetResourceYAML 获取资源的 YAML 定义
 func (s *K8sService) GetResourceYAML(ctx context.Context, resourceType, namespace, name string) (string, error) {
-	var obj interface{}
+	var obj runtime.Object
 	var err error
 
 	switch resourceType {
