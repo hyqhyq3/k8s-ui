@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
@@ -165,26 +167,30 @@ func (s *K8sService) GetClusterStats(ctx context.Context) (*ClusterStats, error)
 	}
 	stats.Version = fmt.Sprintf("%s.%s", version.Major, version.Minor)
 
-	// 并发获取各类资源数量
+	// 并发获取各类资源数量，每个 goroutine 返回独立结果，避免数据竞争
 	type countResult struct {
-		key   string
-		count int
-		err   error
+		key       string
+		count     int
+		nodeStats []NodeStatInfo
+		err       error
 	}
 
-	ch := make(chan countResult, 9)
+	results := make([]countResult, 8)
 
+	var wg sync.WaitGroup
+	wg.Add(8)
+
+	// 节点
 	go func() {
+		defer wg.Done()
 		list, err := s.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 		if err != nil {
-			ch <- countResult{key: "nodes", err: err}
+			results[0] = countResult{key: "nodes", err: err}
 			return
 		}
-		// 收集节点统计
 		nodeStats := make([]NodeStatInfo, 0, len(list.Items))
 		for _, node := range list.Items {
 			ns := NodeStatInfo{Name: node.Name}
-			// 节点状态
 			for _, cond := range node.Status.Conditions {
 				if cond.Type == corev1.NodeReady {
 					if cond.Status == corev1.ConditionTrue {
@@ -195,7 +201,6 @@ func (s *K8sService) GetClusterStats(ctx context.Context) (*ClusterStats, error)
 					break
 				}
 			}
-			// Pod 容量
 			if node.Status.Capacity != nil {
 				if qty, ok := node.Status.Capacity[corev1.ResourcePods]; ok {
 					ns.PodCapacity = int(qty.Value())
@@ -209,96 +214,111 @@ func (s *K8sService) GetClusterStats(ctx context.Context) (*ClusterStats, error)
 			}
 			nodeStats = append(nodeStats, ns)
 		}
-		stats.NodeStats = nodeStats
-		ch <- countResult{key: "nodes", count: len(list.Items)}
+		results[0] = countResult{key: "nodes", count: len(list.Items), nodeStats: nodeStats}
 	}()
 
+	// Namespace
 	go func() {
+		defer wg.Done()
 		list, err := s.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 		if err != nil {
-			ch <- countResult{key: "namespaces", err: err}
+			results[1] = countResult{key: "namespaces", err: err}
 			return
 		}
-		ch <- countResult{key: "namespaces", count: len(list.Items)}
+		results[1] = countResult{key: "namespaces", count: len(list.Items)}
 	}()
 
+	// Pods
 	go func() {
+		defer wg.Done()
 		list, err := s.client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 		if err != nil {
-			ch <- countResult{key: "pods", err: err}
+			results[2] = countResult{key: "pods", err: err}
 			return
 		}
-		ch <- countResult{key: "pods", count: len(list.Items)}
+		results[2] = countResult{key: "pods", count: len(list.Items)}
 	}()
 
+	// Deployments
 	go func() {
+		defer wg.Done()
 		list, err := s.client.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
 		if err != nil {
-			ch <- countResult{key: "deployments", err: err}
+			results[3] = countResult{key: "deployments", err: err}
 			return
 		}
-		ch <- countResult{key: "deployments", count: len(list.Items)}
+		results[3] = countResult{key: "deployments", count: len(list.Items)}
 	}()
 
+	// StatefulSets
 	go func() {
+		defer wg.Done()
 		list, err := s.client.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
 		if err != nil {
-			ch <- countResult{key: "statefulSets", err: err}
+			results[4] = countResult{key: "statefulSets", err: err}
 			return
 		}
-		ch <- countResult{key: "statefulSets", count: len(list.Items)}
+		results[4] = countResult{key: "statefulSets", count: len(list.Items)}
 	}()
 
+	// DaemonSets
 	go func() {
+		defer wg.Done()
 		list, err := s.client.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
 		if err != nil {
-			ch <- countResult{key: "daemonSets", err: err}
+			results[5] = countResult{key: "daemonSets", err: err}
 			return
 		}
-		ch <- countResult{key: "daemonSets", count: len(list.Items)}
+		results[5] = countResult{key: "daemonSets", count: len(list.Items)}
 	}()
 
+	// PVs
 	go func() {
+		defer wg.Done()
 		list, err := s.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 		if err != nil {
-			ch <- countResult{key: "pvs", err: err}
+			results[6] = countResult{key: "pvs", err: err}
 			return
 		}
-		ch <- countResult{key: "pvs", count: len(list.Items)}
+		results[6] = countResult{key: "pvs", count: len(list.Items)}
 	}()
 
+	// PVCs
 	go func() {
+		defer wg.Done()
 		list, err := s.client.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{})
 		if err != nil {
-			ch <- countResult{key: "pvcs", err: err}
+			results[7] = countResult{key: "pvcs", err: err}
 			return
 		}
-		ch <- countResult{key: "pvcs", count: len(list.Items)}
+		results[7] = countResult{key: "pvcs", count: len(list.Items)}
 	}()
 
-	// 收集结果
-	for i := 0; i < 8; i++ {
-		result := <-ch
-		if result.err != nil {
-			return nil, result.err
+	wg.Wait()
+
+	// 在主 goroutine 中组装结果，无数据竞争
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		switch result.key {
+		switch r.key {
 		case "nodes":
-			stats.Nodes = result.count
+			stats.Nodes = r.count
+			stats.NodeStats = r.nodeStats
 		case "namespaces":
-			stats.Namespaces = result.count
+			stats.Namespaces = r.count
 		case "pods":
-			stats.Pods = result.count
+			stats.Pods = r.count
 		case "deployments":
-			stats.Deployments = result.count
+			stats.Deployments = r.count
 		case "statefulSets":
-			stats.StatefulSets = result.count
+			stats.StatefulSets = r.count
 		case "daemonSets":
-			stats.DaemonSets = result.count
+			stats.DaemonSets = r.count
 		case "pvs":
-			stats.PVs = result.count
+			stats.PVs = r.count
 		case "pvcs":
-			stats.PVCs = result.count
+			stats.PVCs = r.count
 		}
 	}
 
