@@ -96,6 +96,37 @@ func (h *Handler) ListSecrets(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": secrets})
 }
 
+// ListPersistentVolumes 获取 persistentvolume 列表
+func (h *Handler) ListPersistentVolumes(c *gin.Context) {
+	pvs, err := h.k8sService.ListPersistentVolumes(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": pvs})
+}
+
+// ListPersistentVolumeClaims 获取 persistentvolumeclaim 列表
+func (h *Handler) ListPersistentVolumeClaims(c *gin.Context) {
+	namespace := c.Query("namespace")
+	pvcs, err := h.k8sService.ListPersistentVolumeClaims(c.Request.Context(), namespace)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": pvcs})
+}
+
+// ListStorageClasses 获取 storageclass 列表
+func (h *Handler) ListStorageClasses(c *gin.Context) {
+	scs, err := h.k8sService.ListStorageClasses(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": scs})
+}
+
 // ListDaemonSets 获取 daemonset 列表
 func (h *Handler) ListDaemonSets(c *gin.Context) {
 	namespace := c.Query("namespace")

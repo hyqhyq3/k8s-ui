@@ -38,6 +38,9 @@ func main() {
 		api.GET("/daemonsets", h.ListDaemonSets)
 		api.GET("/configmaps", h.ListConfigMaps)
 		api.GET("/secrets", h.ListSecrets)
+		api.GET("/pvs", h.ListPersistentVolumes)
+		api.GET("/pvcs", h.ListPersistentVolumeClaims)
+		api.GET("/storageclasses", h.ListStorageClasses)
 	}
 
 	log.Printf("Server starting on :%s", cfg.Port)

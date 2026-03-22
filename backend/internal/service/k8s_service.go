@@ -241,6 +241,154 @@ func (s *K8sService) ListSecrets(ctx context.Context, namespace string) ([]Secre
 	return result, nil
 }
 
+// PersistentVolumeInfo persistentvolume 信息
+type PersistentVolumeInfo struct {
+	Name          string   `json:"name"`
+	Capacity      string   `json:"capacity"`
+	AccessModes   []string `json:"accessModes"`
+	ReclaimPolicy string   `json:"reclaimPolicy"`
+	Status        string   `json:"status"`
+	StorageClass  string   `json:"storageClass"`
+	ClaimRef      string   `json:"claimRef"`
+	Age           string   `json:"age"`
+}
+
+// PersistentVolumeClaimInfo persistentvolumeclaim 信息
+type PersistentVolumeClaimInfo struct {
+	Name         string   `json:"name"`
+	Namespace    string   `json:"namespace"`
+	StorageClass string   `json:"storageClass"`
+	Status       string   `json:"status"`
+	Volume       string   `json:"volume"`
+	AccessModes  []string `json:"accessModes"`
+	Capacity     string   `json:"capacity"`
+	Age          string   `json:"age"`
+}
+
+// StorageClassInfo storageclass 信息
+type StorageClassInfo struct {
+	Name              string `json:"name"`
+	Provisioner       string `json:"provisioner"`
+	ReclaimPolicy     string `json:"reclaimPolicy"`
+	VolumeBindingMode string `json:"volumeBindingMode"`
+	Age               string `json:"age"`
+}
+
+// ListPersistentVolumes 获取 persistentvolume 列表
+func (s *K8sService) ListPersistentVolumes(ctx context.Context) ([]PersistentVolumeInfo, error) {
+	list, err := s.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]PersistentVolumeInfo, 0, len(list.Items))
+	for _, pv := range list.Items {
+		capacity := ""
+		if pv.Spec.Capacity != nil {
+			if qty, ok := pv.Spec.Capacity[corev1.ResourceStorage]; ok {
+				capacity = qty.String()
+			}
+		}
+
+		accessModes := make([]string, 0, len(pv.Spec.AccessModes))
+		for _, am := range pv.Spec.AccessModes {
+			accessModes = append(accessModes, string(am))
+		}
+
+		claimRef := ""
+		if pv.Spec.ClaimRef != nil {
+			claimRef = fmt.Sprintf("%s/%s", pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
+		}
+
+		result = append(result, PersistentVolumeInfo{
+			Name:          pv.Name,
+			Capacity:      capacity,
+			AccessModes:   accessModes,
+			ReclaimPolicy: string(pv.Spec.PersistentVolumeReclaimPolicy),
+			Status:        string(pv.Status.Phase),
+			StorageClass:  pv.Spec.StorageClassName,
+			ClaimRef:      claimRef,
+			Age:           formatAge(pv.CreationTimestamp.Time),
+		})
+	}
+	return result, nil
+}
+
+// ListPersistentVolumeClaims 获取 persistentvolumeclaim 列表，namespace 为空时查所有
+func (s *K8sService) ListPersistentVolumeClaims(ctx context.Context, namespace string) ([]PersistentVolumeClaimInfo, error) {
+	list, err := s.client.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]PersistentVolumeClaimInfo, 0, len(list.Items))
+	for _, pvc := range list.Items {
+		accessModes := make([]string, 0, len(pvc.Spec.AccessModes))
+		for _, am := range pvc.Spec.AccessModes {
+			accessModes = append(accessModes, string(am))
+		}
+
+		capacity := ""
+		if pvc.Status.Capacity != nil {
+			if qty, ok := pvc.Status.Capacity[corev1.ResourceStorage]; ok {
+				capacity = qty.String()
+			}
+		}
+
+		volume := ""
+		if pvc.Spec.VolumeName != "" {
+			volume = pvc.Spec.VolumeName
+		}
+
+		storageClass := ""
+		if pvc.Spec.StorageClassName != nil {
+			storageClass = *pvc.Spec.StorageClassName
+		}
+
+		result = append(result, PersistentVolumeClaimInfo{
+			Name:         pvc.Name,
+			Namespace:    pvc.Namespace,
+			StorageClass: storageClass,
+			Status:       string(pvc.Status.Phase),
+			Volume:       volume,
+			AccessModes:  accessModes,
+			Capacity:     capacity,
+			Age:          formatAge(pvc.CreationTimestamp.Time),
+		})
+	}
+	return result, nil
+}
+
+// ListStorageClasses 获取 storageclass 列表
+func (s *K8sService) ListStorageClasses(ctx context.Context) ([]StorageClassInfo, error) {
+	list, err := s.client.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]StorageClassInfo, 0, len(list.Items))
+	for _, sc := range list.Items {
+		reclaimPolicy := ""
+		if sc.ReclaimPolicy != nil {
+			reclaimPolicy = string(*sc.ReclaimPolicy)
+		}
+
+		bindingMode := ""
+		if sc.VolumeBindingMode != nil {
+			bindingMode = string(*sc.VolumeBindingMode)
+		}
+
+		result = append(result, StorageClassInfo{
+			Name:              sc.Name,
+			Provisioner:       sc.Provisioner,
+			ReclaimPolicy:     reclaimPolicy,
+			VolumeBindingMode: bindingMode,
+			Age:               formatAge(sc.CreationTimestamp.Time),
+		})
+	}
+	return result, nil
+}
+
 func getContainerImages(containers []corev1.Container) []string {
 	images := make([]string, 0, len(containers))
 	for _, c := range containers {

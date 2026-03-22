@@ -60,3 +60,33 @@ export interface Secret {
   age: string
   labels: Record<string, string>
 }
+
+export interface PersistentVolume {
+  name: string
+  capacity: string
+  accessModes: string[]
+  reclaimPolicy: string
+  status: string
+  storageClass: string
+  claimRef: string
+  age: string
+}
+
+export interface PersistentVolumeClaim {
+  name: string
+  namespace: string
+  storageClass: string
+  status: string
+  volume: string
+  accessModes: string[]
+  capacity: string
+  age: string
+}
+
+export interface StorageClass {
+  name: string
+  provisioner: string
+  reclaimPolicy: string
+  volumeBindingMode: string
+  age: string
+}

@@ -9,6 +9,9 @@ import StatefulSetList from './pages/StatefulSetList'
 import DaemonSetList from './pages/DaemonSetList'
 import ConfigMapList from './pages/ConfigMapList'
 import SecretList from './pages/SecretList'
+import PersistentVolumeList from './pages/PersistentVolumeList'
+import PersistentVolumeClaimList from './pages/PersistentVolumeClaimList'
+import StorageClassList from './pages/StorageClassList'
 
 function App() {
   return (
@@ -24,6 +27,9 @@ function App() {
             <Route path="/daemonsets" element={<DaemonSetList />} />
             <Route path="/configmaps" element={<ConfigMapList />} />
             <Route path="/secrets" element={<SecretList />} />
+            <Route path="/pvs" element={<PersistentVolumeList />} />
+            <Route path="/pvcs" element={<PersistentVolumeClaimList />} />
+            <Route path="/storageclasses" element={<StorageClassList />} />
           </Route>
         </Routes>
       </BrowserRouter>

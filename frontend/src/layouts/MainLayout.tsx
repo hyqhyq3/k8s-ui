@@ -9,6 +9,7 @@ import {
   CloudOutlined,
   FileTextOutlined,
   LockOutlined,
+  HddOutlined,
 } from '@ant-design/icons'
 
 const { Sider, Content } = Layout
@@ -60,6 +61,28 @@ const menuItems = [
         key: '/secrets',
         icon: <LockOutlined />,
         label: 'Secrets',
+      },
+    ],
+  },
+  {
+    key: '/storage',
+    icon: <HddOutlined />,
+    label: '存储',
+    children: [
+      {
+        key: '/pvs',
+        icon: <HddOutlined />,
+        label: 'PVs',
+      },
+      {
+        key: '/pvcs',
+        icon: <DatabaseOutlined />,
+        label: 'PVCs',
+      },
+      {
+        key: '/storageclasses',
+        icon: <CloudServerOutlined />,
+        label: 'StorageClasses',
       },
     ],
   },

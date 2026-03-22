@@ -1,5 +1,5 @@
 import { get } from './client'
-import type { Namespace, Pod, Deployment, StatefulSet, DaemonSet, ConfigMap, Secret } from '../types/k8s'
+import type { Namespace, Pod, Deployment, StatefulSet, DaemonSet, ConfigMap, Secret, PersistentVolume, PersistentVolumeClaim, StorageClass } from '../types/k8s'
 
 export function fetchNamespaces(): Promise<Namespace[]> {
   return get<Namespace[]>('/api/v1/namespaces')
@@ -33,4 +33,17 @@ export function fetchConfigMaps(namespace?: string): Promise<ConfigMap[]> {
 export function fetchSecrets(namespace?: string): Promise<Secret[]> {
   const params = namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''
   return get<Secret[]>(`/api/v1/secrets${params}`)
+}
+
+export function fetchPersistentVolumes(): Promise<PersistentVolume[]> {
+  return get<PersistentVolume[]>('/api/v1/pvs')
+}
+
+export function fetchPersistentVolumeClaims(namespace?: string): Promise<PersistentVolumeClaim[]> {
+  const params = namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''
+  return get<PersistentVolumeClaim[]>(`/api/v1/pvcs${params}`)
+}
+
+export function fetchStorageClasses(): Promise<StorageClass[]> {
+  return get<StorageClass[]>('/api/v1/storageclasses')
 }
