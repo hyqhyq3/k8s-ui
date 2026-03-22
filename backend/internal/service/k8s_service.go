@@ -3,10 +3,14 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -714,4 +718,939 @@ func formatAge(t time.Time) string {
 func formatDuration(d, unit time.Duration) string {
 	v := int(d / unit)
 	return fmt.Sprintf("%d%c", v, unit.String()[0])
+}
+
+// PodDetailInfo Pod 详情信息
+type PodDetailInfo struct {
+	Name            string            `json:"name"`
+	Namespace       string            `json:"namespace"`
+	Status          string            `json:"status"`
+	Phase           string            `json:"phase"`
+	Node            string            `json:"node"`
+	NodeIP          string            `json:"nodeIP"`
+	PodIP           string            `json:"podIP"`
+	RestartCount    int32             `json:"restartCount"`
+	Age             string            `json:"age"`
+	Labels          map[string]string `json:"labels"`
+	Annotations     map[string]string `json:"annotations"`
+	OwnerReferences []OwnerRef        `json:"ownerReferences"`
+	Containers      []ContainerInfo   `json:"containers"`
+	Conditions      []PodCondition    `json:"conditions"`
+	Volumes         []VolumeInfo      `json:"volumes"`
+}
+
+// OwnerRef 所有者引用
+type OwnerRef struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+}
+
+// ContainerInfo 容器信息
+type ContainerInfo struct {
+	Name         string            `json:"name"`
+	Image        string            `json:"image"`
+	Ready        bool              `json:"ready"`
+	RestartCount int32             `json:"restartCount"`
+	State        string            `json:"state"`
+	Reason       string            `json:"reason"`
+	Message      string            `json:"message"`
+	Ports        []ContainerPort   `json:"ports"`
+	Resources    ResourceInfo      `json:"resources"`
+}
+
+// ContainerPort 容器端口
+type ContainerPort struct {
+	Name          string `json:"name"`
+	ContainerPort int32  `json:"containerPort"`
+	Protocol      string `json:"protocol"`
+}
+
+// ResourceInfo 资源信息
+type ResourceInfo struct {
+	Limits   map[string]string `json:"limits"`
+	Requests map[string]string `json:"requests"`
+}
+
+// PodCondition Pod 条件
+type PodCondition struct {
+	Type    string `json:"type"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+}
+
+// VolumeInfo 卷信息
+type VolumeInfo struct {
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Source string `json:"source"`
+}
+
+// GetPodDetail 获取 Pod 详情
+func (s *K8sService) GetPodDetail(ctx context.Context, namespace, name string) (*PodDetailInfo, error) {
+	pod, err := s.client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取 Node IP
+	nodeIP := ""
+	for _, ip := range pod.Status.HostIPs {
+		nodeIP = ip.IP
+		break
+	}
+	if nodeIP == "" && pod.Status.HostIP != "" {
+		nodeIP = pod.Status.HostIP
+	}
+
+	// 构建容器信息
+	containers := make([]ContainerInfo, 0, len(pod.Spec.Containers))
+	for _, c := range pod.Spec.Containers {
+		containerInfo := ContainerInfo{
+			Name:  c.Name,
+			Image: c.Image,
+			Resources: ResourceInfo{
+				Limits:   make(map[string]string),
+				Requests: make(map[string]string),
+			},
+		}
+
+		// 资源限制
+		for k, v := range c.Resources.Limits {
+			containerInfo.Resources.Limits[string(k)] = v.String()
+		}
+		for k, v := range c.Resources.Requests {
+			containerInfo.Resources.Requests[string(k)] = v.String()
+		}
+
+		// 端口
+		for _, p := range c.Ports {
+			containerInfo.Ports = append(containerInfo.Ports, ContainerPort{
+				Name:          p.Name,
+				ContainerPort: p.ContainerPort,
+				Protocol:      string(p.Protocol),
+			})
+		}
+
+		// 查找容器状态
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.Name == c.Name {
+				containerInfo.Ready = cs.Ready
+				containerInfo.RestartCount = cs.RestartCount
+				containerInfo.State, containerInfo.Reason, containerInfo.Message = getContainerState(&cs)
+				break
+			}
+		}
+
+		containers = append(containers, containerInfo)
+	}
+
+	// 构建条件信息
+	conditions := make([]PodCondition, 0, len(pod.Status.Conditions))
+	for _, cond := range pod.Status.Conditions {
+		conditions = append(conditions, PodCondition{
+			Type:    string(cond.Type),
+			Status:  string(cond.Status),
+			Reason:  cond.Reason,
+			Message: cond.Message,
+		})
+	}
+
+	// 构建卷信息
+	volumes := make([]VolumeInfo, 0, len(pod.Spec.Volumes))
+	for _, vol := range pod.Spec.Volumes {
+		volInfo := VolumeInfo{Name: vol.Name}
+		if vol.ConfigMap != nil {
+			volInfo.Type = "ConfigMap"
+			volInfo.Source = vol.ConfigMap.Name
+		} else if vol.Secret != nil {
+			volInfo.Type = "Secret"
+			volInfo.Source = vol.Secret.SecretName
+		} else if vol.PersistentVolumeClaim != nil {
+			volInfo.Type = "PVC"
+			volInfo.Source = vol.PersistentVolumeClaim.ClaimName
+		} else if vol.EmptyDir != nil {
+			volInfo.Type = "EmptyDir"
+		} else if vol.HostPath != nil {
+			volInfo.Type = "HostPath"
+			volInfo.Source = vol.HostPath.Path
+		} else {
+			volInfo.Type = "Other"
+		}
+		volumes = append(volumes, volInfo)
+	}
+
+	// 构建所有者引用
+	ownerRefs := make([]OwnerRef, 0, len(pod.OwnerReferences))
+	for _, ref := range pod.OwnerReferences {
+		ownerRefs = append(ownerRefs, OwnerRef{
+			APIVersion: ref.APIVersion,
+			Kind:       ref.Kind,
+			Name:       ref.Name,
+		})
+	}
+
+	return &PodDetailInfo{
+		Name:            pod.Name,
+		Namespace:       pod.Namespace,
+		Status:          getPodStatus(pod),
+		Phase:           string(pod.Status.Phase),
+		Node:            pod.Spec.NodeName,
+		NodeIP:          nodeIP,
+		PodIP:           pod.Status.PodIP,
+		RestartCount:    getTotalRestarts(pod.Status.ContainerStatuses),
+		Age:             formatAge(pod.CreationTimestamp.Time),
+		Labels:          pod.Labels,
+		Annotations:     pod.Annotations,
+		OwnerReferences: ownerRefs,
+		Containers:      containers,
+		Conditions:      conditions,
+		Volumes:         volumes,
+	}, nil
+}
+
+func getContainerState(cs *corev1.ContainerStatus) (state, reason, message string) {
+	if cs.State.Running != nil {
+		return "Running", "", ""
+	}
+	if cs.State.Waiting != nil {
+		return "Waiting", cs.State.Waiting.Reason, cs.State.Waiting.Message
+	}
+	if cs.State.Terminated != nil {
+		return "Terminated", cs.State.Terminated.Reason, cs.State.Terminated.Message
+	}
+	return "Unknown", "", ""
+}
+
+// EventInfo 事件信息
+type EventInfo struct {
+	Type      string `json:"type"`
+	Reason    string `json:"reason"`
+	Message   string `json:"message"`
+	Count     int32  `json:"count"`
+	FirstTime string `json:"firstTime"`
+	LastTime  string `json:"lastTime"`
+	Source    string `json:"source"`
+}
+
+// GetPodEvents 获取 Pod 相关事件
+func (s *K8sService) GetPodEvents(ctx context.Context, namespace, name string) ([]EventInfo, error) {
+	fieldSelector := fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", name, namespace)
+	events, err := s.client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+		FieldSelector: fieldSelector,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]EventInfo, 0, len(events.Items))
+	for _, e := range events.Items {
+		source := e.Source.Component
+		if e.Source.Host != "" {
+			source = fmt.Sprintf("%s, %s", source, e.Source.Host)
+		}
+		result = append(result, EventInfo{
+			Type:      e.Type,
+			Reason:    e.Reason,
+			Message:   e.Message,
+			Count:     e.Count,
+			FirstTime: formatEventTime(e.FirstTimestamp.Time),
+			LastTime:  formatEventTime(e.LastTimestamp.Time),
+			Source:    source,
+		})
+	}
+	return result, nil
+}
+
+func formatEventTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format("2006-01-02 15:04:05")
+}
+
+// GetPodLogs 获取 Pod 日志
+func (s *K8sService) GetPodLogs(ctx context.Context, namespace, name, container string, tailLines int64, previous bool) (string, error) {
+	options := &corev1.PodLogOptions{
+		Container: container,
+		Previous:  previous,
+	}
+	if tailLines > 0 {
+		options.TailLines = &tailLines
+	}
+
+	req := s.client.CoreV1().Pods(namespace).GetLogs(name, options)
+	logs, err := req.Do(ctx).Raw()
+	if err != nil {
+		return "", err
+	}
+	return string(logs), nil
+}
+
+// DeletePod 删除 Pod
+func (s *K8sService) DeletePod(ctx context.Context, namespace, name string) error {
+	return s.client.CoreV1().Pods(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+}
+
+// DeploymentDetailInfo Deployment 详情信息
+type DeploymentDetailInfo struct {
+	Name              string            `json:"name"`
+	Namespace         string            `json:"namespace"`
+	Replicas          int32             `json:"replicas"`
+	ReadyReplicas     int32             `json:"readyReplicas"`
+	UpdatedReplicas   int32             `json:"updatedReplicas"`
+	AvailableReplicas int32             `json:"availableReplicas"`
+	Strategy          string            `json:"strategy"`
+	Age               string            `json:"age"`
+	Labels            map[string]string `json:"labels"`
+	Annotations       map[string]string `json:"annotations"`
+	Selector          map[string]string `json:"selector"`
+	PodTemplate       PodTemplateInfo   `json:"podTemplate"`
+	Conditions        []DeployCondition `json:"conditions"`
+}
+
+// PodTemplateInfo Pod 模板信息
+type PodTemplateInfo struct {
+	Labels       map[string]string `json:"labels"`
+	Annotations  map[string]string `json:"annotations"`
+	Containers   []ContainerInfo   `json:"containers"`
+	NodeSelector map[string]string `json:"nodeSelector"`
+}
+
+// DeployCondition Deployment 条件
+type DeployCondition struct {
+	Type    string `json:"type"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+}
+
+// GetDeploymentDetail 获取 Deployment 详情
+func (s *K8sService) GetDeploymentDetail(ctx context.Context, namespace, name string) (*DeploymentDetailInfo, error) {
+	deploy, err := s.client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	// 构建容器信息
+	containers := make([]ContainerInfo, 0, len(deploy.Spec.Template.Spec.Containers))
+	for _, c := range deploy.Spec.Template.Spec.Containers {
+		containerInfo := ContainerInfo{
+			Name:  c.Name,
+			Image: c.Image,
+			Resources: ResourceInfo{
+				Limits:   make(map[string]string),
+				Requests: make(map[string]string),
+			},
+		}
+
+		for k, v := range c.Resources.Limits {
+			containerInfo.Resources.Limits[string(k)] = v.String()
+		}
+		for k, v := range c.Resources.Requests {
+			containerInfo.Resources.Requests[string(k)] = v.String()
+		}
+
+		for _, p := range c.Ports {
+			containerInfo.Ports = append(containerInfo.Ports, ContainerPort{
+				Name:          p.Name,
+				ContainerPort: p.ContainerPort,
+				Protocol:      string(p.Protocol),
+			})
+		}
+
+		containers = append(containers, containerInfo)
+	}
+
+	// 构建条件信息
+	conditions := make([]DeployCondition, 0, len(deploy.Status.Conditions))
+	for _, cond := range deploy.Status.Conditions {
+		conditions = append(conditions, DeployCondition{
+			Type:    string(cond.Type),
+			Status:  string(cond.Status),
+			Reason:  cond.Reason,
+			Message: cond.Message,
+		})
+	}
+
+	strategy := "RollingUpdate"
+	if deploy.Spec.Strategy.Type == appsv1.RecreateDeploymentStrategyType {
+		strategy = "Recreate"
+	}
+
+	return &DeploymentDetailInfo{
+		Name:              deploy.Name,
+		Namespace:         deploy.Namespace,
+		Replicas:          *deploy.Spec.Replicas,
+		ReadyReplicas:     deploy.Status.ReadyReplicas,
+		UpdatedReplicas:   deploy.Status.UpdatedReplicas,
+		AvailableReplicas: deploy.Status.AvailableReplicas,
+		Strategy:          strategy,
+		Age:               formatAge(deploy.CreationTimestamp.Time),
+		Labels:            deploy.Labels,
+		Annotations:       deploy.Annotations,
+		Selector:          deploy.Spec.Selector.MatchLabels,
+		PodTemplate: PodTemplateInfo{
+			Labels:       deploy.Spec.Template.Labels,
+			Annotations:  deploy.Spec.Template.Annotations,
+			Containers:   containers,
+			NodeSelector: deploy.Spec.Template.Spec.NodeSelector,
+		},
+		Conditions: conditions,
+	}, nil
+}
+
+// ScaleDeployment 扩缩容 Deployment
+func (s *K8sService) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {
+	scale := &autoscalingv1.Scale{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: autoscalingv1.ScaleSpec{
+			Replicas: replicas,
+		},
+	}
+	_, err := s.client.AppsV1().Deployments(namespace).UpdateScale(ctx, name, scale, metav1.UpdateOptions{})
+	return err
+}
+
+// RestartDeployment 重启 Deployment（通过 annotation 触发滚动更新）
+func (s *K8sService) RestartDeployment(ctx context.Context, namespace, name string) error {
+	deploy, err := s.client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	if deploy.Spec.Template.Annotations == nil {
+		deploy.Spec.Template.Annotations = make(map[string]string)
+	}
+	deploy.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
+
+	_, err = s.client.AppsV1().Deployments(namespace).Update(ctx, deploy, metav1.UpdateOptions{})
+	return err
+}
+
+// DeleteDeployment 删除 Deployment
+func (s *K8sService) DeleteDeployment(ctx context.Context, namespace, name string) error {
+	return s.client.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+}
+
+// ServiceInfo Service 信息
+type ServiceInfo struct {
+	Name        string            `json:"name"`
+	Namespace   string            `json:"namespace"`
+	Type        string            `json:"type"`
+	ClusterIP   string            `json:"clusterIP"`
+	ExternalIP  []string          `json:"externalIP"`
+	Ports       []ServicePortInfo `json:"ports"`
+	Selector    map[string]string `json:"selector"`
+	Age         string            `json:"age"`
+	Labels      map[string]string `json:"labels"`
+}
+
+// ServicePortInfo Service 端口信息
+type ServicePortInfo struct {
+	Name       string `json:"name"`
+	Port       int32  `json:"port"`
+	TargetPort string `json:"targetPort"`
+	NodePort   int32  `json:"nodePort"`
+	Protocol   string `json:"protocol"`
+}
+
+// ListServices 获取 Service 列表
+func (s *K8sService) ListServices(ctx context.Context, namespace string) ([]ServiceInfo, error) {
+	services, err := s.client.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]ServiceInfo, 0, len(services.Items))
+	for _, svc := range services.Items {
+		externalIPs := make([]string, 0)
+		if svc.Spec.Type == corev1.ServiceTypeLoadBalancer {
+			for _, ip := range svc.Status.LoadBalancer.Ingress {
+				if ip.IP != "" {
+					externalIPs = append(externalIPs, ip.IP)
+				}
+				if ip.Hostname != "" {
+					externalIPs = append(externalIPs, ip.Hostname)
+				}
+			}
+		} else {
+			externalIPs = svc.Spec.ExternalIPs
+		}
+
+		ports := make([]ServicePortInfo, 0, len(svc.Spec.Ports))
+		for _, p := range svc.Spec.Ports {
+			ports = append(ports, ServicePortInfo{
+				Name:       p.Name,
+				Port:       p.Port,
+				TargetPort: p.TargetPort.String(),
+				NodePort:   p.NodePort,
+				Protocol:   string(p.Protocol),
+			})
+		}
+
+		result = append(result, ServiceInfo{
+			Name:       svc.Name,
+			Namespace:  svc.Namespace,
+			Type:       string(svc.Spec.Type),
+			ClusterIP:  svc.Spec.ClusterIP,
+			ExternalIP: externalIPs,
+			Ports:      ports,
+			Selector:   svc.Spec.Selector,
+			Age:        formatAge(svc.CreationTimestamp.Time),
+			Labels:     svc.Labels,
+		})
+	}
+	return result, nil
+}
+
+// GetServiceDetail 获取 Service 详情
+func (s *K8sService) GetServiceDetail(ctx context.Context, namespace, name string) (*ServiceInfo, error) {
+	svc, err := s.client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	externalIPs := make([]string, 0)
+	if svc.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		for _, ip := range svc.Status.LoadBalancer.Ingress {
+			if ip.IP != "" {
+				externalIPs = append(externalIPs, ip.IP)
+			}
+			if ip.Hostname != "" {
+				externalIPs = append(externalIPs, ip.Hostname)
+			}
+		}
+	} else {
+		externalIPs = svc.Spec.ExternalIPs
+	}
+
+	ports := make([]ServicePortInfo, 0, len(svc.Spec.Ports))
+	for _, p := range svc.Spec.Ports {
+		ports = append(ports, ServicePortInfo{
+			Name:       p.Name,
+			Port:       p.Port,
+			TargetPort: p.TargetPort.String(),
+			NodePort:   p.NodePort,
+			Protocol:   string(p.Protocol),
+		})
+	}
+
+	return &ServiceInfo{
+		Name:       svc.Name,
+		Namespace:  svc.Namespace,
+		Type:       string(svc.Spec.Type),
+		ClusterIP:  svc.Spec.ClusterIP,
+		ExternalIP: externalIPs,
+		Ports:      ports,
+		Selector:   svc.Spec.Selector,
+		Age:        formatAge(svc.CreationTimestamp.Time),
+		Labels:     svc.Labels,
+	}, nil
+}
+
+// DeleteService 删除 Service
+func (s *K8sService) DeleteService(ctx context.Context, namespace, name string) error {
+	return s.client.CoreV1().Services(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+}
+
+// IngressInfo Ingress 信息
+type IngressInfo struct {
+	Name      string         `json:"name"`
+	Namespace string         `json:"namespace"`
+	Class     string         `json:"class"`
+	Hosts     []string       `json:"hosts"`
+	Addresses []string       `json:"addresses"`
+	Rules     []IngressRule  `json:"rules"`
+	Age       string         `json:"age"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// IngressRule Ingress 规则
+type IngressRule struct {
+	Host    string         `json:"host"`
+	Paths   []IngressPath  `json:"paths"`
+}
+
+// IngressPath Ingress 路径
+type IngressPath struct {
+	Path        string `json:"path"`
+	PathType    string `json:"pathType"`
+	ServiceName string `json:"serviceName"`
+	ServicePort string `json:"servicePort"`
+}
+
+// ListIngresses 获取 Ingress 列表
+func (s *K8sService) ListIngresses(ctx context.Context, namespace string) ([]IngressInfo, error) {
+	ingresses, err := s.client.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]IngressInfo, 0, len(ingresses.Items))
+	for _, ing := range ingresses.Items {
+		hosts := make([]string, 0)
+		rules := make([]IngressRule, 0, len(ing.Spec.Rules))
+		for _, rule := range ing.Spec.Rules {
+			if rule.Host != "" {
+				hosts = append(hosts, rule.Host)
+			}
+			paths := make([]IngressPath, 0, len(rule.HTTP.Paths))
+			for _, p := range rule.HTTP.Paths {
+				svcName := ""
+				svcPort := ""
+				if p.Backend.Service != nil {
+					svcName = p.Backend.Service.Name
+					if p.Backend.Service.Port.Number != 0 {
+						svcPort = fmt.Sprintf("%d", p.Backend.Service.Port.Number)
+					} else {
+						svcPort = p.Backend.Service.Port.Name
+					}
+				}
+				pathType := string(*p.PathType)
+				if pathType == "" {
+					pathType = "ImplementationSpecific"
+				}
+				paths = append(paths, IngressPath{
+					Path:        p.Path,
+					PathType:    pathType,
+					ServiceName: svcName,
+					ServicePort: svcPort,
+				})
+			}
+			rules = append(rules, IngressRule{
+				Host:  rule.Host,
+				Paths: paths,
+			})
+		}
+
+		addresses := make([]string, 0)
+		for _, addr := range ing.Status.LoadBalancer.Ingress {
+			if addr.IP != "" {
+				addresses = append(addresses, addr.IP)
+			}
+			if addr.Hostname != "" {
+				addresses = append(addresses, addr.Hostname)
+			}
+		}
+
+		class := ""
+		if ing.Spec.IngressClassName != nil {
+			class = *ing.Spec.IngressClassName
+		}
+
+		result = append(result, IngressInfo{
+			Name:      ing.Name,
+			Namespace: ing.Namespace,
+			Class:     class,
+			Hosts:     hosts,
+			Addresses: addresses,
+			Rules:     rules,
+			Age:       formatAge(ing.CreationTimestamp.Time),
+			Labels:    ing.Labels,
+		})
+	}
+	return result, nil
+}
+
+// GetIngressDetail 获取 Ingress 详情
+func (s *K8sService) GetIngressDetail(ctx context.Context, namespace, name string) (*IngressInfo, error) {
+	ing, err := s.client.NetworkingV1().Ingresses(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	hosts := make([]string, 0)
+	rules := make([]IngressRule, 0, len(ing.Spec.Rules))
+	for _, rule := range ing.Spec.Rules {
+		if rule.Host != "" {
+			hosts = append(hosts, rule.Host)
+		}
+		paths := make([]IngressPath, 0, len(rule.HTTP.Paths))
+		for _, p := range rule.HTTP.Paths {
+			svcName := ""
+			svcPort := ""
+			if p.Backend.Service != nil {
+				svcName = p.Backend.Service.Name
+				if p.Backend.Service.Port.Number != 0 {
+					svcPort = fmt.Sprintf("%d", p.Backend.Service.Port.Number)
+				} else {
+					svcPort = p.Backend.Service.Port.Name
+				}
+			}
+			pathType := string(*p.PathType)
+			if pathType == "" {
+				pathType = "ImplementationSpecific"
+			}
+			paths = append(paths, IngressPath{
+				Path:        p.Path,
+				PathType:    pathType,
+				ServiceName: svcName,
+				ServicePort: svcPort,
+			})
+		}
+		rules = append(rules, IngressRule{
+			Host:  rule.Host,
+			Paths: paths,
+		})
+	}
+
+	addresses := make([]string, 0)
+	for _, addr := range ing.Status.LoadBalancer.Ingress {
+		if addr.IP != "" {
+			addresses = append(addresses, addr.IP)
+		}
+		if addr.Hostname != "" {
+			addresses = append(addresses, addr.Hostname)
+		}
+	}
+
+	class := ""
+	if ing.Spec.IngressClassName != nil {
+		class = *ing.Spec.IngressClassName
+	}
+
+	return &IngressInfo{
+		Name:      ing.Name,
+		Namespace: ing.Namespace,
+		Class:     class,
+		Hosts:     hosts,
+		Addresses: addresses,
+		Rules:     rules,
+		Age:       formatAge(ing.CreationTimestamp.Time),
+		Labels:    ing.Labels,
+	}, nil
+}
+
+// DeleteIngress 删除 Ingress
+func (s *K8sService) DeleteIngress(ctx context.Context, namespace, name string) error {
+	return s.client.NetworkingV1().Ingresses(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+}
+
+// NodeInfo Node 信息
+type NodeInfo struct {
+	Name           string            `json:"name"`
+	Status         string            `json:"status"`
+	Roles          []string          `json:"roles"`
+	Version        string            `json:"version"`
+	OSImage        string            `json:"osImage"`
+	KernelVersion  string            `json:"kernelVersion"`
+	ContainerRuntime string          `json:"containerRuntime"`
+	CPU            string            `json:"cpu"`
+	Memory         string            `json:"memory"`
+	Age            string            `json:"age"`
+	Labels         map[string]string `json:"labels"`
+}
+
+// ListNodes 获取 Node 列表
+func (s *K8sService) ListNodes(ctx context.Context) ([]NodeInfo, error) {
+	nodes, err := s.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]NodeInfo, 0, len(nodes.Items))
+	for _, node := range nodes.Items {
+		// 获取状态
+		status := "Unknown"
+		for _, cond := range node.Status.Conditions {
+			if cond.Type == corev1.NodeReady {
+				if cond.Status == corev1.ConditionTrue {
+					status = "Ready"
+				} else {
+					status = "NotReady"
+				}
+				break
+			}
+		}
+
+		// 获取角色
+		roles := make([]string, 0)
+		for k := range node.Labels {
+			if strings.HasPrefix(k, "node-role.kubernetes.io/") {
+				role := strings.TrimPrefix(k, "node-role.kubernetes.io/")
+				if role != "" {
+					roles = append(roles, role)
+				}
+			}
+		}
+		if len(roles) == 0 {
+			roles = append(roles, "<none>")
+		}
+
+		// 获取资源
+		cpu := node.Status.Capacity.Cpu().String()
+		memory := node.Status.Capacity.Memory().String()
+
+		result = append(result, NodeInfo{
+			Name:             node.Name,
+			Status:           status,
+			Roles:            roles,
+			Version:          node.Status.NodeInfo.KubeletVersion,
+			OSImage:          node.Status.NodeInfo.OSImage,
+			KernelVersion:    node.Status.NodeInfo.KernelVersion,
+			ContainerRuntime: node.Status.NodeInfo.ContainerRuntimeVersion,
+			CPU:              cpu,
+			Memory:           memory,
+			Age:              formatAge(node.CreationTimestamp.Time),
+			Labels:           node.Labels,
+		})
+	}
+	return result, nil
+}
+
+// NodeDetailInfo Node 详情信息
+type NodeDetailInfo struct {
+	Name               string                 `json:"name"`
+	Status             string                 `json:"status"`
+	Roles              []string               `json:"roles"`
+	Version            string                 `json:"version"`
+	OSImage            string                 `json:"osImage"`
+	KernelVersion      string                 `json:"kernelVersion"`
+	ContainerRuntime   string                 `json:"containerRuntime"`
+	Architecture       string                 `json:"architecture"`
+	OperatingSystem    string                 `json:"operatingSystem"`
+	CPU                string                 `json:"cpu"`
+	Memory             string                 `json:"memory"`
+	EphemeralStorage   string                 `json:"ephemeralStorage"`
+	Pods               string                 `json:"pods"`
+	Age                string                 `json:"age"`
+	Labels             map[string]string      `json:"labels"`
+	Annotations        map[string]string      `json:"annotations"`
+	Addresses          []NodeAddress          `json:"addresses"`
+	Conditions         []NodeCondition        `json:"conditions"`
+	AllocatedResources AllocatedResourceInfo  `json:"allocatedResources"`
+}
+
+// NodeAddress Node 地址
+type NodeAddress struct {
+	Type    string `json:"type"`
+	Address string `json:"address"`
+}
+
+// NodeCondition Node 条件
+type NodeCondition struct {
+	Type    string `json:"type"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+}
+
+// AllocatedResourceInfo 已分配资源信息
+type AllocatedResourceInfo struct {
+	CPU              string `json:"cpu"`
+	Memory           string `json:"memory"`
+	EphemeralStorage string `json:"ephemeralStorage"`
+	Pods             int    `json:"pods"`
+}
+
+// GetNodeDetail 获取 Node 详情
+func (s *K8sService) GetNodeDetail(ctx context.Context, name string) (*NodeDetailInfo, error) {
+	node, err := s.client.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取状态
+	status := "Unknown"
+	conditions := make([]NodeCondition, 0, len(node.Status.Conditions))
+	for _, cond := range node.Status.Conditions {
+		conditions = append(conditions, NodeCondition{
+			Type:    string(cond.Type),
+			Status:  string(cond.Status),
+			Reason:  cond.Reason,
+			Message: cond.Message,
+		})
+		if cond.Type == corev1.NodeReady {
+			if cond.Status == corev1.ConditionTrue {
+				status = "Ready"
+			} else {
+				status = "NotReady"
+			}
+		}
+	}
+
+	// 获取角色
+	roles := make([]string, 0)
+	for k := range node.Labels {
+		if strings.HasPrefix(k, "node-role.kubernetes.io/") {
+			role := strings.TrimPrefix(k, "node-role.kubernetes.io/")
+			if role != "" {
+				roles = append(roles, role)
+			}
+		}
+	}
+	if len(roles) == 0 {
+		roles = append(roles, "<none>")
+	}
+
+	// 获取地址
+	addresses := make([]NodeAddress, 0, len(node.Status.Addresses))
+	for _, addr := range node.Status.Addresses {
+		addresses = append(addresses, NodeAddress{
+			Type:    string(addr.Type),
+			Address: addr.Address,
+		})
+	}
+
+	// 计算已分配资源
+	pods, err := s.client.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("spec.nodeName=%s", name),
+	})
+	allocatedCPU := resource.Quantity{}
+	allocatedMemory := resource.Quantity{}
+	allocatedStorage := resource.Quantity{}
+	allocatedPods := 0
+	if err == nil {
+		for _, pod := range pods.Items {
+			if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+				continue
+			}
+			allocatedPods++
+			for _, c := range pod.Spec.Containers {
+				if c.Resources.Requests != nil {
+					if cpu, ok := c.Resources.Requests[corev1.ResourceCPU]; ok {
+						allocatedCPU.Add(cpu)
+					}
+					if mem, ok := c.Resources.Requests[corev1.ResourceMemory]; ok {
+						allocatedMemory.Add(mem)
+					}
+					if storage, ok := c.Resources.Requests[corev1.ResourceEphemeralStorage]; ok {
+						allocatedStorage.Add(storage)
+					}
+				}
+			}
+		}
+	}
+
+	return &NodeDetailInfo{
+		Name:             node.Name,
+		Status:           status,
+		Roles:            roles,
+		Version:          node.Status.NodeInfo.KubeletVersion,
+		OSImage:          node.Status.NodeInfo.OSImage,
+		KernelVersion:    node.Status.NodeInfo.KernelVersion,
+		ContainerRuntime: node.Status.NodeInfo.ContainerRuntimeVersion,
+		Architecture:     node.Status.NodeInfo.Architecture,
+		OperatingSystem:  node.Status.NodeInfo.OperatingSystem,
+		CPU:              node.Status.Capacity.Cpu().String(),
+		Memory:           node.Status.Capacity.Memory().String(),
+		EphemeralStorage: node.Status.Capacity.StorageEphemeral().String(),
+		Pods:             node.Status.Capacity.Pods().String(),
+		Age:              formatAge(node.CreationTimestamp.Time),
+		Labels:           node.Labels,
+		Annotations:      node.Annotations,
+		Addresses:        addresses,
+		Conditions:       conditions,
+		AllocatedResources: AllocatedResourceInfo{
+			CPU:              allocatedCPU.String(),
+			Memory:           allocatedMemory.String(),
+			EphemeralStorage: allocatedStorage.String(),
+			Pods:             allocatedPods,
+		},
+	}, nil
 }
