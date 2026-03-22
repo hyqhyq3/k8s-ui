@@ -7,6 +7,8 @@ import {
   RocketOutlined,
   DatabaseOutlined,
   CloudOutlined,
+  FileTextOutlined,
+  LockOutlined,
 } from '@ant-design/icons'
 
 const { Sider, Content } = Layout
@@ -41,6 +43,23 @@ const menuItems = [
         key: '/daemonsets',
         icon: <CloudOutlined />,
         label: 'DaemonSets',
+      },
+    ],
+  },
+  {
+    key: '/config',
+    icon: <FileTextOutlined />,
+    label: '配置',
+    children: [
+      {
+        key: '/configmaps',
+        icon: <FileTextOutlined />,
+        label: 'ConfigMaps',
+      },
+      {
+        key: '/secrets',
+        icon: <LockOutlined />,
+        label: 'Secrets',
       },
     ],
   },

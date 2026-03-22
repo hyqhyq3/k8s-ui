@@ -44,3 +44,19 @@ export interface DaemonSet {
   images: string[]
   labels: Record<string, string>
 }
+
+export interface ConfigMap {
+  name: string
+  namespace: string
+  keys: string[]
+  age: string
+  labels: Record<string, string>
+}
+
+export interface Secret {
+  name: string
+  namespace: string
+  type: string
+  age: string
+  labels: Record<string, string>
+}

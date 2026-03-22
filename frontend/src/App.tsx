@@ -7,6 +7,8 @@ import PodList from './pages/PodList'
 import DeploymentList from './pages/DeploymentList'
 import StatefulSetList from './pages/StatefulSetList'
 import DaemonSetList from './pages/DaemonSetList'
+import ConfigMapList from './pages/ConfigMapList'
+import SecretList from './pages/SecretList'
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
             <Route path="/deployments" element={<DeploymentList />} />
             <Route path="/statefulsets" element={<StatefulSetList />} />
             <Route path="/daemonsets" element={<DaemonSetList />} />
+            <Route path="/configmaps" element={<ConfigMapList />} />
+            <Route path="/secrets" element={<SecretList />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -179,6 +179,68 @@ func (s *K8sService) ListDaemonSets(ctx context.Context, namespace string) ([]Da
 	return result, nil
 }
 
+// ConfigMapInfo configmap 信息
+type ConfigMapInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Keys      []string          `json:"keys"`
+	Age       string            `json:"age"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// SecretInfo secret 信息
+type SecretInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Type      string            `json:"type"`
+	Age       string            `json:"age"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// ListConfigMaps 获取 configmap 列表，namespace 为空时查所有
+func (s *K8sService) ListConfigMaps(ctx context.Context, namespace string) ([]ConfigMapInfo, error) {
+	list, err := s.client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]ConfigMapInfo, 0, len(list.Items))
+	for _, cm := range list.Items {
+		keys := make([]string, 0, len(cm.Data))
+		for k := range cm.Data {
+			keys = append(keys, k)
+		}
+		result = append(result, ConfigMapInfo{
+			Name:      cm.Name,
+			Namespace: cm.Namespace,
+			Keys:      keys,
+			Age:       formatAge(cm.CreationTimestamp.Time),
+			Labels:    cm.Labels,
+		})
+	}
+	return result, nil
+}
+
+// ListSecrets 获取 secret 列表，namespace 为空时查所有
+func (s *K8sService) ListSecrets(ctx context.Context, namespace string) ([]SecretInfo, error) {
+	list, err := s.client.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]SecretInfo, 0, len(list.Items))
+	for _, sec := range list.Items {
+		result = append(result, SecretInfo{
+			Name:      sec.Name,
+			Namespace: sec.Namespace,
+			Type:      string(sec.Type),
+			Age:       formatAge(sec.CreationTimestamp.Time),
+			Labels:    sec.Labels,
+		})
+	}
+	return result, nil
+}
+
 func getContainerImages(containers []corev1.Container) []string {
 	images := make([]string, 0, len(containers))
 	for _, c := range containers {

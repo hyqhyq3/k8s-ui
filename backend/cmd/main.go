@@ -36,6 +36,8 @@ func main() {
 		api.GET("/deployments", h.ListDeployments)
 		api.GET("/statefulsets", h.ListStatefulSets)
 		api.GET("/daemonsets", h.ListDaemonSets)
+		api.GET("/configmaps", h.ListConfigMaps)
+		api.GET("/secrets", h.ListSecrets)
 	}
 
 	log.Printf("Server starting on :%s", cfg.Port)

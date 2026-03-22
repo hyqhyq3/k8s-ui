@@ -1,5 +1,5 @@
 import { get } from './client'
-import type { Namespace, Pod, Deployment, StatefulSet, DaemonSet } from '../types/k8s'
+import type { Namespace, Pod, Deployment, StatefulSet, DaemonSet, ConfigMap, Secret } from '../types/k8s'
 
 export function fetchNamespaces(): Promise<Namespace[]> {
   return get<Namespace[]>('/api/v1/namespaces')
@@ -23,4 +23,14 @@ export function fetchStatefulSets(namespace?: string): Promise<StatefulSet[]> {
 export function fetchDaemonSets(namespace?: string): Promise<DaemonSet[]> {
   const params = namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''
   return get<DaemonSet[]>(`/api/v1/daemonsets${params}`)
+}
+
+export function fetchConfigMaps(namespace?: string): Promise<ConfigMap[]> {
+  const params = namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''
+  return get<ConfigMap[]>(`/api/v1/configmaps${params}`)
+}
+
+export function fetchSecrets(namespace?: string): Promise<Secret[]> {
+  const params = namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''
+  return get<Secret[]>(`/api/v1/secrets${params}`)
 }

@@ -74,6 +74,28 @@ func (h *Handler) ListStatefulSets(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": statefulsets})
 }
 
+// ListConfigMaps 获取 configmap 列表
+func (h *Handler) ListConfigMaps(c *gin.Context) {
+	namespace := c.Query("namespace")
+	configmaps, err := h.k8sService.ListConfigMaps(c.Request.Context(), namespace)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": configmaps})
+}
+
+// ListSecrets 获取 secret 列表
+func (h *Handler) ListSecrets(c *gin.Context) {
+	namespace := c.Query("namespace")
+	secrets, err := h.k8sService.ListSecrets(c.Request.Context(), namespace)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": secrets})
+}
+
 // ListDaemonSets 获取 daemonset 列表
 func (h *Handler) ListDaemonSets(c *gin.Context) {
 	namespace := c.Query("namespace")
