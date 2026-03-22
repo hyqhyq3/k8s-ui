@@ -1,4 +1,4 @@
-{{- if .Values.namespace.create | default true }}
+{{- if .Values.namespace | default dict | dig "create" true }}
 apiVersion: v1
 kind: Namespace
 metadata:
