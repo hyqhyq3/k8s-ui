@@ -11,6 +11,7 @@ import {
   FileTextOutlined,
   LockOutlined,
   HddOutlined,
+  CloudSyncOutlined,
 } from '@ant-design/icons'
 
 const { Sider, Content } = Layout
@@ -92,6 +93,23 @@ const menuItems = [
       },
     ],
   },
+  {
+    key: '/helm',
+    icon: <CloudSyncOutlined />,
+    label: 'Helm',
+    children: [
+      {
+        key: '/helm/releases',
+        icon: <CloudSyncOutlined />,
+        label: 'Releases',
+      },
+      {
+        key: '/helm/repos',
+        icon: <DatabaseOutlined />,
+        label: 'Chart 仓库',
+      },
+    ],
+  },
 ]
 
 export default function MainLayout() {
@@ -108,7 +126,7 @@ export default function MainLayout() {
         <Menu
           theme="dark"
           selectedKeys={[location.pathname]}
-          defaultOpenKeys={['/workloads', '/config', '/storage']}
+          defaultOpenKeys={['/workloads', '/config', '/storage', '/helm']}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
         />

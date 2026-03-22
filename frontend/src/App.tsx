@@ -13,6 +13,9 @@ import SecretList from './pages/SecretList'
 import PersistentVolumeList from './pages/PersistentVolumeList'
 import PersistentVolumeClaimList from './pages/PersistentVolumeClaimList'
 import StorageClassList from './pages/StorageClassList'
+import HelmReleases from './pages/HelmReleases'
+import HelmReleaseDetail from './pages/HelmReleaseDetail'
+import HelmRepos from './pages/HelmRepos'
 
 function App() {
   return (
@@ -32,6 +35,9 @@ function App() {
             <Route path="/pvs" element={<PersistentVolumeList />} />
             <Route path="/pvcs" element={<PersistentVolumeClaimList />} />
             <Route path="/storageclasses" element={<StorageClassList />} />
+            <Route path="/helm/releases" element={<HelmReleases />} />
+            <Route path="/helm/releases/:namespace/:name" element={<HelmReleaseDetail />} />
+            <Route path="/helm/repos" element={<HelmRepos />} />
           </Route>
         </Routes>
       </BrowserRouter>

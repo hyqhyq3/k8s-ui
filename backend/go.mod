@@ -5,7 +5,9 @@ go 1.25.6
 require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/stretchr/testify v1.11.1
+	helm.sh/helm/v3 v3.17.3
 	k8s.io/client-go v0.35.3
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (

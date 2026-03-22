@@ -14,18 +14,30 @@ import (
 )
 
 // NewClient 根据 config 创建 Kubernetes 客户端
-func NewClient(cfg *config.Config) (*kubernetes.Clientset, error) {
+func NewClient(cfg *config.Config) (*kubernetes.Clientset, *rest.Config, error) {
+	restConfig, err := getRESTConfig(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("创建 k8s client 失败: %w", err)
+	}
+
+	log.Println("Kubernetes 客户端初始化成功")
+	return clientset, restConfig, nil
+}
+
+// getRESTConfig 获取 Kubernetes REST 配置
+func getRESTConfig(cfg *config.Config) (*rest.Config, error) {
 	if cfg.InCluster {
 		restConfig, err := rest.InClusterConfig()
 		if err != nil {
 			return nil, fmt.Errorf("获取 in-cluster config 失败: %w", err)
 		}
-		clientset, err := kubernetes.NewForConfig(restConfig)
-		if err != nil {
-			return nil, fmt.Errorf("创建 k8s client 失败: %w", err)
-		}
 		log.Println("Kubernetes 客户端初始化成功 (in-cluster)")
-		return clientset, nil
+		return restConfig, nil
 	}
 
 	kubeconfig := cfg.KubeConfig
@@ -43,12 +55,5 @@ func NewClient(cfg *config.Config) (*kubernetes.Clientset, error) {
 	if err != nil {
 		return nil, fmt.Errorf("构建 k8s config 失败: %w", err)
 	}
-
-	clientset, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		return nil, fmt.Errorf("创建 k8s client 失败: %w", err)
-	}
-
-	log.Println("Kubernetes 客户端初始化成功")
-	return clientset, nil
+	return restConfig, nil
 }
