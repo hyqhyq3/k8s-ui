@@ -8,13 +8,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/yangqihuang/k8s-ui/internal/service"
 )
 
 // setupRouter 设置测试路由
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	h := NewHandler()
+	
+	// 创建 handler，传入 nil k8sService（健康检查和 Ping 不依赖它）
+	var k8sService *service.K8sService
+	h := NewHandler(k8sService)
 
 	r.GET("/health", h.Health)
 	r.GET("/api/v1/ping", h.Ping)

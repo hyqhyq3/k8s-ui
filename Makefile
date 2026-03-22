@@ -46,11 +46,32 @@ dev-backend:
 dev-frontend:
 	cd frontend && npm run dev
 
-# 测试
+# 测试 - 后端 API 测试
 test-backend:
-	cd backend && go test ./...
+	cd backend && go test ./... -v
 
-test-frontend:
-	cd frontend && npm test
+# 测试 - 后端覆盖率测试
+test-backend-coverage:
+	cd backend && go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out -o coverage.html
 
-.PHONY: build push deploy clean dev-backend dev-frontend test-backend test-frontend
+# 测试 - 前端 E2E 测试
+test-frontend-e2e:
+	cd frontend && npm run test:e2e
+
+# 测试 - 前端 E2E 测试（带 UI）
+test-frontend-e2e-ui:
+	cd frontend && npm run test:e2e:ui
+
+# 测试 - 前端 E2E 测试报告
+test-frontend-e2e-report:
+	cd frontend && npm run test:e2e:report
+
+# 测试 - 运行所有测试
+test-all: test-backend test-frontend-e2e
+
+# 安装测试依赖
+install-test-deps:
+	cd frontend && npm install
+	cd frontend && npx playwright install chromium
+
+.PHONY: build push deploy clean dev-backend dev-frontend test-backend test-backend-coverage test-frontend-e2e test-frontend-e2e-ui test-frontend-e2e-report test-all install-test-deps

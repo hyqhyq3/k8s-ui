@@ -80,6 +80,113 @@ func (s *K8sService) ListPods(ctx context.Context, namespace string) ([]PodInfo,
 	return result, nil
 }
 
+// DeploymentInfo deployment 信息
+type DeploymentInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Replicas  int32             `json:"replicas"`
+	Ready     string            `json:"ready"`
+	Age       string            `json:"age"`
+	Images    []string          `json:"images"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// StatefulSetInfo statefulset 信息
+type StatefulSetInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Replicas  int32             `json:"replicas"`
+	Ready     string            `json:"ready"`
+	Age       string            `json:"age"`
+	Images    []string          `json:"images"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// DaemonSetInfo daemonset 信息
+type DaemonSetInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Desired   int32             `json:"desired"`
+	Ready     int32             `json:"ready"`
+	Age       string            `json:"age"`
+	Images    []string          `json:"images"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// ListDeployments 获取 deployment 列表，namespace 为空时查所有
+func (s *K8sService) ListDeployments(ctx context.Context, namespace string) ([]DeploymentInfo, error) {
+	list, err := s.client.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]DeploymentInfo, 0, len(list.Items))
+	for _, d := range list.Items {
+		result = append(result, DeploymentInfo{
+			Name:      d.Name,
+			Namespace: d.Namespace,
+			Replicas:  *d.Spec.Replicas,
+			Ready:     fmt.Sprintf("%d/%d", d.Status.ReadyReplicas, *d.Spec.Replicas),
+			Age:       formatAge(d.CreationTimestamp.Time),
+			Images:    getContainerImages(d.Spec.Template.Spec.Containers),
+			Labels:    d.Labels,
+		})
+	}
+	return result, nil
+}
+
+// ListStatefulSets 获取 statefulset 列表，namespace 为空时查所有
+func (s *K8sService) ListStatefulSets(ctx context.Context, namespace string) ([]StatefulSetInfo, error) {
+	list, err := s.client.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]StatefulSetInfo, 0, len(list.Items))
+	for _, ss := range list.Items {
+		result = append(result, StatefulSetInfo{
+			Name:      ss.Name,
+			Namespace: ss.Namespace,
+			Replicas:  *ss.Spec.Replicas,
+			Ready:     fmt.Sprintf("%d/%d", ss.Status.ReadyReplicas, *ss.Spec.Replicas),
+			Age:       formatAge(ss.CreationTimestamp.Time),
+			Images:    getContainerImages(ss.Spec.Template.Spec.Containers),
+			Labels:    ss.Labels,
+		})
+	}
+	return result, nil
+}
+
+// ListDaemonSets 获取 daemonset 列表，namespace 为空时查所有
+func (s *K8sService) ListDaemonSets(ctx context.Context, namespace string) ([]DaemonSetInfo, error) {
+	list, err := s.client.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]DaemonSetInfo, 0, len(list.Items))
+	for _, ds := range list.Items {
+		result = append(result, DaemonSetInfo{
+			Name:      ds.Name,
+			Namespace: ds.Namespace,
+			Desired:   ds.Status.DesiredNumberScheduled,
+			Ready:     ds.Status.NumberReady,
+			Age:       formatAge(ds.CreationTimestamp.Time),
+			Images:    getContainerImages(ds.Spec.Template.Spec.Containers),
+			Labels:    ds.Labels,
+		})
+	}
+	return result, nil
+}
+
+func getContainerImages(containers []corev1.Container) []string {
+	images := make([]string, 0, len(containers))
+	for _, c := range containers {
+		images = append(images, c.Image)
+	}
+	return images
+}
+
 func getPodStatus(pod *corev1.Pod) string {
 	for _, cond := range pod.Status.Conditions {
 		if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {

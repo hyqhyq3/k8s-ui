@@ -51,3 +51,36 @@ func (h *Handler) ListPods(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"data": pods})
 }
+
+// ListDeployments 获取 deployment 列表
+func (h *Handler) ListDeployments(c *gin.Context) {
+	namespace := c.Query("namespace")
+	deployments, err := h.k8sService.ListDeployments(c.Request.Context(), namespace)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": deployments})
+}
+
+// ListStatefulSets 获取 statefulset 列表
+func (h *Handler) ListStatefulSets(c *gin.Context) {
+	namespace := c.Query("namespace")
+	statefulsets, err := h.k8sService.ListStatefulSets(c.Request.Context(), namespace)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": statefulsets})
+}
+
+// ListDaemonSets 获取 daemonset 列表
+func (h *Handler) ListDaemonSets(c *gin.Context) {
+	namespace := c.Query("namespace")
+	daemonsets, err := h.k8sService.ListDaemonSets(c.Request.Context(), namespace)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": daemonsets})
+}

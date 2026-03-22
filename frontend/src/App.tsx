@@ -4,6 +4,9 @@ import zhCN from 'antd/locale/zh_CN'
 import MainLayout from './layouts/MainLayout'
 import NamespaceList from './pages/NamespaceList'
 import PodList from './pages/PodList'
+import DeploymentList from './pages/DeploymentList'
+import StatefulSetList from './pages/StatefulSetList'
+import DaemonSetList from './pages/DaemonSetList'
 
 function App() {
   return (
@@ -14,6 +17,9 @@ function App() {
             <Route path="/" element={<Navigate to="/namespaces" replace />} />
             <Route path="/namespaces" element={<NamespaceList />} />
             <Route path="/pods" element={<PodList />} />
+            <Route path="/deployments" element={<DeploymentList />} />
+            <Route path="/statefulsets" element={<StatefulSetList />} />
+            <Route path="/daemonsets" element={<DaemonSetList />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -4,6 +4,9 @@ import { Layout, Menu } from 'antd'
 import {
   CloudServerOutlined,
   AppstoreOutlined,
+  RocketOutlined,
+  DatabaseOutlined,
+  CloudOutlined,
 } from '@ant-design/icons'
 
 const { Sider, Content } = Layout
@@ -15,9 +18,31 @@ const menuItems = [
     label: 'Namespaces',
   },
   {
-    key: '/pods',
+    key: '/workloads',
     icon: <AppstoreOutlined />,
-    label: 'Pods',
+    label: '工作负载',
+    children: [
+      {
+        key: '/pods',
+        icon: <AppstoreOutlined />,
+        label: 'Pods',
+      },
+      {
+        key: '/deployments',
+        icon: <RocketOutlined />,
+        label: 'Deployments',
+      },
+      {
+        key: '/statefulsets',
+        icon: <DatabaseOutlined />,
+        label: 'StatefulSets',
+      },
+      {
+        key: '/daemonsets',
+        icon: <CloudOutlined />,
+        label: 'DaemonSets',
+      },
+    ],
   },
 ]
 

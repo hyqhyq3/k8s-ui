@@ -14,3 +14,33 @@ export interface Pod {
   age: string
   ip: string
 }
+
+export interface Deployment {
+  name: string
+  namespace: string
+  replicas: number
+  ready: string
+  age: string
+  images: string[]
+  labels: Record<string, string>
+}
+
+export interface StatefulSet {
+  name: string
+  namespace: string
+  replicas: number
+  ready: string
+  age: string
+  images: string[]
+  labels: Record<string, string>
+}
+
+export interface DaemonSet {
+  name: string
+  namespace: string
+  desired: number
+  ready: number
+  age: string
+  images: string[]
+  labels: Record<string, string>
+}

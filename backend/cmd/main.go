@@ -33,6 +33,9 @@ func main() {
 		api.GET("/ping", h.Ping)
 		api.GET("/namespaces", h.ListNamespaces)
 		api.GET("/pods", h.ListPods)
+		api.GET("/deployments", h.ListDeployments)
+		api.GET("/statefulsets", h.ListStatefulSets)
+		api.GET("/daemonsets", h.ListDaemonSets)
 	}
 
 	log.Printf("Server starting on :%s", cfg.Port)
