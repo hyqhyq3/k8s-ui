@@ -31,6 +31,35 @@ func (h *Handler) Ping(c *gin.Context) {
 	})
 }
 
+// GetClusterStats 获取集群统计信息
+func (h *Handler) GetClusterStats(c *gin.Context) {
+	stats, err := h.k8sService.GetClusterStats(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": stats})
+}
+
+// GetResourceYAML 获取资源 YAML
+func (h *Handler) GetResourceYAML(c *gin.Context) {
+	resourceType := c.Param("resource")
+	namespace := c.Query("namespace")
+	name := c.Param("name")
+
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name 参数不能为空"})
+		return
+	}
+
+	yaml, err := h.k8sService.GetResourceYAML(c.Request.Context(), resourceType, namespace, name)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": yaml})
+}
+
 // ListNamespaces 获取 namespace 列表
 func (h *Handler) ListNamespaces(c *gin.Context) {
 	namespaces, err := h.k8sService.ListNamespaces(c.Request.Context())

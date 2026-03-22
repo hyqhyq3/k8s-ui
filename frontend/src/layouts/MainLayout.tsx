@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu } from 'antd'
 import {
+  DashboardOutlined,
   CloudServerOutlined,
   AppstoreOutlined,
   RocketOutlined,
@@ -15,6 +16,11 @@ import {
 const { Sider, Content } = Layout
 
 const menuItems = [
+  {
+    key: '/dashboard',
+    icon: <DashboardOutlined />,
+    label: '概览',
+  },
   {
     key: '/namespaces',
     icon: <CloudServerOutlined />,
@@ -102,6 +108,7 @@ export default function MainLayout() {
         <Menu
           theme="dark"
           selectedKeys={[location.pathname]}
+          defaultOpenKeys={['/workloads', '/config', '/storage']}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
         />

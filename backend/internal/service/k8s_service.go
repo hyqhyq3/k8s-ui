@@ -7,25 +7,32 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 // K8sService Kubernetes 业务逻辑
 type K8sService struct {
-	client *kubernetes.Clientset
+	client        *kubernetes.Clientset
+	discoveryClient discovery.DiscoveryInterface
 }
 
 // NewK8sService 创建 K8s 服务
 func NewK8sService(client *kubernetes.Clientset) *K8sService {
-	return &K8sService{client: client}
+	return &K8sService{
+		client:        client,
+		discoveryClient: client.Discovery(),
+	}
 }
 
 // NamespaceInfo namespace 信息
 type NamespaceInfo struct {
-	Name   string            `json:"name"`
+	Name   string              `json:"name"`
 	Status corev1.NamespacePhase `json:"status"`
-	Age    string            `json:"age"`
-	Labels map[string]string `json:"labels"`
+	Age    string              `json:"age"`
+	Labels map[string]string   `json:"labels"`
 }
 
 // PodInfo pod 信息
@@ -37,6 +44,330 @@ type PodInfo struct {
 	Node      string `json:"node"`
 	Age       string `json:"age"`
 	IP        string `json:"ip"`
+}
+
+// DeploymentInfo deployment 信息
+type DeploymentInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Replicas  int32             `json:"replicas"`
+	Ready     string            `json:"ready"`
+	Age       string            `json:"age"`
+	Images    []string          `json:"images"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// StatefulSetInfo statefulset 信息
+type StatefulSetInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Replicas  int32             `json:"replicas"`
+	Ready     string            `json:"ready"`
+	Age       string            `json:"age"`
+	Images    []string          `json:"images"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// DaemonSetInfo daemonset 信息
+type DaemonSetInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Desired   int32             `json:"desired"`
+	Ready     int32             `json:"ready"`
+	Age       string            `json:"age"`
+	Images    []string          `json:"images"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// ConfigMapInfo configmap 信息
+type ConfigMapInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Keys      []string          `json:"keys"`
+	Age       string            `json:"age"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// SecretInfo secret 信息
+type SecretInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Type      string            `json:"type"`
+	Age       string            `json:"age"`
+	Labels    map[string]string `json:"labels"`
+}
+
+// PersistentVolumeInfo persistentvolume 信息
+type PersistentVolumeInfo struct {
+	Name          string   `json:"name"`
+	Capacity      string   `json:"capacity"`
+	AccessModes   []string `json:"accessModes"`
+	ReclaimPolicy string   `json:"reclaimPolicy"`
+	Status        string   `json:"status"`
+	StorageClass  string   `json:"storageClass"`
+	ClaimRef      string   `json:"claimRef"`
+	Age           string   `json:"age"`
+}
+
+// PersistentVolumeClaimInfo persistentvolumeclaim 信息
+type PersistentVolumeClaimInfo struct {
+	Name         string   `json:"name"`
+	Namespace    string   `json:"namespace"`
+	StorageClass string   `json:"storageClass"`
+	Status       string   `json:"status"`
+	Volume       string   `json:"volume"`
+	AccessModes  []string `json:"accessModes"`
+	Capacity     string   `json:"capacity"`
+	Age          string   `json:"age"`
+}
+
+// StorageClassInfo storageclass 信息
+type StorageClassInfo struct {
+	Name              string `json:"name"`
+	Provisioner       string `json:"provisioner"`
+	ReclaimPolicy     string `json:"reclaimPolicy"`
+	VolumeBindingMode string `json:"volumeBindingMode"`
+	Age               string `json:"age"`
+}
+
+// ClusterStats 集群统计信息
+type ClusterStats struct {
+	Nodes       int            `json:"nodes"`
+	Namespaces  int            `json:"namespaces"`
+	Pods        int            `json:"pods"`
+	Deployments int            `json:"deployments"`
+	StatefulSets int           `json:"statefulSets"`
+	DaemonSets  int            `json:"daemonSets"`
+	PVs         int            `json:"pvs"`
+	PVCs        int            `json:"pvcs"`
+	Version     string         `json:"version"`
+	NodeStats   []NodeStatInfo `json:"nodeStats"`
+}
+
+// NodeStatInfo 节点统计
+type NodeStatInfo struct {
+	Name            string `json:"name"`
+	Status          string `json:"status"`
+	Pods            int    `json:"pods"`
+	PodCapacity     int    `json:"podCapacity"`
+	CPUAllocatable  string `json:"cpuAllocatable"`
+	MemoryAllocatable string `json:"memoryAllocatable"`
+}
+
+// GetClusterStats 获取集群统计信息
+func (s *K8sService) GetClusterStats(ctx context.Context) (*ClusterStats, error) {
+	stats := &ClusterStats{}
+
+	// 获取 K8s 版本
+	version, err := s.discoveryClient.ServerVersion()
+	if err != nil {
+		return nil, fmt.Errorf("获取集群版本失败: %w", err)
+	}
+	stats.Version = fmt.Sprintf("%s.%s", version.Major, version.Minor)
+
+	// 并发获取各类资源数量
+	type countResult struct {
+		key   string
+		count int
+		err   error
+	}
+
+	ch := make(chan countResult, 9)
+
+	go func() {
+		list, err := s.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+		if err != nil {
+			ch <- countResult{key: "nodes", err: err}
+			return
+		}
+		// 收集节点统计
+		nodeStats := make([]NodeStatInfo, 0, len(list.Items))
+		for _, node := range list.Items {
+			ns := NodeStatInfo{Name: node.Name}
+			// 节点状态
+			for _, cond := range node.Status.Conditions {
+				if cond.Type == corev1.NodeReady {
+					if cond.Status == corev1.ConditionTrue {
+						ns.Status = "Ready"
+					} else {
+						ns.Status = "NotReady"
+					}
+					break
+				}
+			}
+			// Pod 容量
+			if node.Status.Capacity != nil {
+				if qty, ok := node.Status.Capacity[corev1.ResourcePods]; ok {
+					ns.PodCapacity = int(qty.Value())
+				}
+				if qty, ok := node.Status.Allocatable[corev1.ResourceCPU]; ok {
+					ns.CPUAllocatable = qty.String()
+				}
+				if qty, ok := node.Status.Allocatable[corev1.ResourceMemory]; ok {
+					ns.MemoryAllocatable = qty.String()
+				}
+			}
+			nodeStats = append(nodeStats, ns)
+		}
+		stats.NodeStats = nodeStats
+		ch <- countResult{key: "nodes", count: len(list.Items)}
+	}()
+
+	go func() {
+		list, err := s.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+		if err != nil {
+			ch <- countResult{key: "namespaces", err: err}
+			return
+		}
+		ch <- countResult{key: "namespaces", count: len(list.Items)}
+	}()
+
+	go func() {
+		list, err := s.client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+		if err != nil {
+			ch <- countResult{key: "pods", err: err}
+			return
+		}
+		ch <- countResult{key: "pods", count: len(list.Items)}
+	}()
+
+	go func() {
+		list, err := s.client.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+		if err != nil {
+			ch <- countResult{key: "deployments", err: err}
+			return
+		}
+		ch <- countResult{key: "deployments", count: len(list.Items)}
+	}()
+
+	go func() {
+		list, err := s.client.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
+		if err != nil {
+			ch <- countResult{key: "statefulSets", err: err}
+			return
+		}
+		ch <- countResult{key: "statefulSets", count: len(list.Items)}
+	}()
+
+	go func() {
+		list, err := s.client.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
+		if err != nil {
+			ch <- countResult{key: "daemonSets", err: err}
+			return
+		}
+		ch <- countResult{key: "daemonSets", count: len(list.Items)}
+	}()
+
+	go func() {
+		list, err := s.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+		if err != nil {
+			ch <- countResult{key: "pvs", err: err}
+			return
+		}
+		ch <- countResult{key: "pvs", count: len(list.Items)}
+	}()
+
+	go func() {
+		list, err := s.client.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{})
+		if err != nil {
+			ch <- countResult{key: "pvcs", err: err}
+			return
+		}
+		ch <- countResult{key: "pvcs", count: len(list.Items)}
+	}()
+
+	// 收集结果
+	for i := 0; i < 8; i++ {
+		result := <-ch
+		if result.err != nil {
+			return nil, result.err
+		}
+		switch result.key {
+		case "nodes":
+			stats.Nodes = result.count
+		case "namespaces":
+			stats.Namespaces = result.count
+		case "pods":
+			stats.Pods = result.count
+		case "deployments":
+			stats.Deployments = result.count
+		case "statefulSets":
+			stats.StatefulSets = result.count
+		case "daemonSets":
+			stats.DaemonSets = result.count
+		case "pvs":
+			stats.PVs = result.count
+		case "pvcs":
+			stats.PVCs = result.count
+		}
+	}
+
+	return stats, nil
+}
+
+// GetResourceYAML 获取资源的 YAML 定义
+func (s *K8sService) GetResourceYAML(ctx context.Context, resourceType, namespace, name string) (string, error) {
+	var obj interface{}
+	var err error
+
+	switch resourceType {
+	case "pod", "pods":
+		obj, err = s.client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+	case "deployment", "deployments":
+		obj, err = s.client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	case "statefulset", "statefulsets":
+		obj, err = s.client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	case "daemonset", "daemonsets":
+		obj, err = s.client.AppsV1().DaemonSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	case "configmap", "configmaps":
+		obj, err = s.client.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
+	case "secret", "secrets":
+		obj, err = s.client.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
+	case "persistentvolumeclaim", "persistentvolumeclaims", "pvc", "pvcs":
+		obj, err = s.client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
+	case "persistentvolume", "persistentvolumes", "pv", "pvs":
+		obj, err = s.client.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
+	case "storageclass", "storageclasses", "sc":
+		obj, err = s.client.StorageV1().StorageClasses().Get(ctx, name, metav1.GetOptions{})
+	case "namespace", "namespaces":
+		obj, err = s.client.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+	case "service", "services":
+		obj, err = s.client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
+	case "ingress", "ingresses":
+		obj, err = s.client.NetworkingV1().Ingresses(namespace).Get(ctx, name, metav1.GetOptions{})
+	case "node", "nodes":
+		obj, err = s.client.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
+	default:
+		return "", fmt.Errorf("不支持的资源类型: %s", resourceType)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("获取资源 %s/%s 失败: %w", resourceType, name, err)
+	}
+
+	// 转换为 YAML
+	gvks, _, err := scheme.Scheme.ObjectKinds(obj)
+	if err != nil {
+		return "", fmt.Errorf("获取 GVK 失败: %w", err)
+	}
+	if len(gvks) > 0 {
+		obj.GetObjectKind().SetGroupVersionKind(gvks[0])
+	}
+
+	// 使用 k8s.io/apimachinery 的 serializer
+	mediaType := "application/yaml"
+	info, ok := runtime.SerializerInfoForMediaType(scheme.Codecs.SupportedMediaTypes(), mediaType)
+	if !ok {
+		return "", fmt.Errorf("不支持 YAML 序列化")
+	}
+
+	encoder := scheme.Codecs.EncoderForVersion(info.Serializer, schema.GroupVersion{Group: "", Version: "v1"})
+	yamlBytes, err := runtime.Encode(encoder, obj)
+	if err != nil {
+		return "", fmt.Errorf("YAML 序列化失败: %w", err)
+	}
+
+	return string(yamlBytes), nil
 }
 
 // ListNamespaces 获取 namespace 列表
@@ -78,39 +409,6 @@ func (s *K8sService) ListPods(ctx context.Context, namespace string) ([]PodInfo,
 		})
 	}
 	return result, nil
-}
-
-// DeploymentInfo deployment 信息
-type DeploymentInfo struct {
-	Name      string            `json:"name"`
-	Namespace string            `json:"namespace"`
-	Replicas  int32             `json:"replicas"`
-	Ready     string            `json:"ready"`
-	Age       string            `json:"age"`
-	Images    []string          `json:"images"`
-	Labels    map[string]string `json:"labels"`
-}
-
-// StatefulSetInfo statefulset 信息
-type StatefulSetInfo struct {
-	Name      string            `json:"name"`
-	Namespace string            `json:"namespace"`
-	Replicas  int32             `json:"replicas"`
-	Ready     string            `json:"ready"`
-	Age       string            `json:"age"`
-	Images    []string          `json:"images"`
-	Labels    map[string]string `json:"labels"`
-}
-
-// DaemonSetInfo daemonset 信息
-type DaemonSetInfo struct {
-	Name      string            `json:"name"`
-	Namespace string            `json:"namespace"`
-	Desired   int32             `json:"desired"`
-	Ready     int32             `json:"ready"`
-	Age       string            `json:"age"`
-	Images    []string          `json:"images"`
-	Labels    map[string]string `json:"labels"`
 }
 
 // ListDeployments 获取 deployment 列表，namespace 为空时查所有
@@ -179,24 +477,6 @@ func (s *K8sService) ListDaemonSets(ctx context.Context, namespace string) ([]Da
 	return result, nil
 }
 
-// ConfigMapInfo configmap 信息
-type ConfigMapInfo struct {
-	Name      string            `json:"name"`
-	Namespace string            `json:"namespace"`
-	Keys      []string          `json:"keys"`
-	Age       string            `json:"age"`
-	Labels    map[string]string `json:"labels"`
-}
-
-// SecretInfo secret 信息
-type SecretInfo struct {
-	Name      string            `json:"name"`
-	Namespace string            `json:"namespace"`
-	Type      string            `json:"type"`
-	Age       string            `json:"age"`
-	Labels    map[string]string `json:"labels"`
-}
-
 // ListConfigMaps 获取 configmap 列表，namespace 为空时查所有
 func (s *K8sService) ListConfigMaps(ctx context.Context, namespace string) ([]ConfigMapInfo, error) {
 	list, err := s.client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
@@ -239,39 +519,6 @@ func (s *K8sService) ListSecrets(ctx context.Context, namespace string) ([]Secre
 		})
 	}
 	return result, nil
-}
-
-// PersistentVolumeInfo persistentvolume 信息
-type PersistentVolumeInfo struct {
-	Name          string   `json:"name"`
-	Capacity      string   `json:"capacity"`
-	AccessModes   []string `json:"accessModes"`
-	ReclaimPolicy string   `json:"reclaimPolicy"`
-	Status        string   `json:"status"`
-	StorageClass  string   `json:"storageClass"`
-	ClaimRef      string   `json:"claimRef"`
-	Age           string   `json:"age"`
-}
-
-// PersistentVolumeClaimInfo persistentvolumeclaim 信息
-type PersistentVolumeClaimInfo struct {
-	Name         string   `json:"name"`
-	Namespace    string   `json:"namespace"`
-	StorageClass string   `json:"storageClass"`
-	Status       string   `json:"status"`
-	Volume       string   `json:"volume"`
-	AccessModes  []string `json:"accessModes"`
-	Capacity     string   `json:"capacity"`
-	Age          string   `json:"age"`
-}
-
-// StorageClassInfo storageclass 信息
-type StorageClassInfo struct {
-	Name              string `json:"name"`
-	Provisioner       string `json:"provisioner"`
-	ReclaimPolicy     string `json:"reclaimPolicy"`
-	VolumeBindingMode string `json:"volumeBindingMode"`
-	Age               string `json:"age"`
 }
 
 // ListPersistentVolumes 获取 persistentvolume 列表

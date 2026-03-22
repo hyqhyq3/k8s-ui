@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Table, Select, Space, message } from 'antd'
+import { Table, Space, Input, Select, Button } from 'antd'
+import { ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import { fetchConfigMaps, fetchNamespaces } from '../api/k8s'
+import { fetchConfigMaps } from '../api/k8s'
 import type { ConfigMap } from '../types/k8s'
+import YAMLViewer from '../components/YAMLViewer'
+import { useResourceList } from '../hooks/useResourceList'
 
 const columns: ColumnsType<ConfigMap> = [
   {
@@ -28,62 +30,52 @@ const columns: ColumnsType<ConfigMap> = [
     dataIndex: 'age',
     key: 'age',
   },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 60,
+    render: (_: unknown, record: ConfigMap) => (
+      <YAMLViewer resourceType="configmaps" name={record.name} namespace={record.namespace} />
+    ),
+  },
 ]
 
 export default function ConfigMapList() {
-  const [data, setData] = useState<ConfigMap[]>([])
-  const [namespaces, setNamespaces] = useState<string[]>([])
-  const [selectedNs, setSelectedNs] = useState<string | undefined>(undefined)
-  const [loading, setLoading] = useState(false)
-
-  const loadNamespaces = async () => {
-    try {
-      const res = await fetchNamespaces()
-      setNamespaces(res.map((ns) => ns.name))
-    } catch {
-      message.error('获取 Namespace 列表失败')
-    }
-  }
-
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetchConfigMaps(selectedNs)
-      setData(res)
-    } catch {
-      message.error('获取 ConfigMap 列表失败')
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedNs])
-
-  useEffect(() => {
-    loadNamespaces()
-  }, [])
-
-  useEffect(() => {
-    loadData()
-  }, [loadData])
+  const { data, namespaces, selectedNs, setSelectedNs, searchText, setSearchText, loading, refresh } =
+    useResourceList<ConfigMap>({ fetchFn: fetchConfigMaps })
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>ConfigMaps</h2>
-        <Select
-          placeholder="按 Namespace 筛选"
-          allowClear
-          style={{ width: 240 }}
-          value={selectedNs}
-          onChange={setSelectedNs}
-          options={namespaces.map((ns) => ({ label: ns, value: ns }))}
-        />
+        <Space>
+          <Input
+            placeholder="搜索名称..."
+            prefix={<SearchOutlined />}
+            allowClear
+            style={{ width: 200 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+          <Select
+            placeholder="按 Namespace 筛选"
+            allowClear
+            style={{ width: 200 }}
+            value={selectedNs}
+            onChange={setSelectedNs}
+            options={namespaces.map((ns) => ({ label: ns, value: ns }))}
+          />
+          <Button icon={<ReloadOutlined />} onClick={refresh} loading={loading}>
+            刷新
+          </Button>
+        </Space>
       </div>
       <Table
         columns={columns}
         dataSource={data}
         rowKey={(row) => `${row.namespace}/${row.name}`}
         loading={loading}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
       />
     </Space>
   )

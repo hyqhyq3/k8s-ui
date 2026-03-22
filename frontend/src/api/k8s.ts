@@ -1,5 +1,14 @@
 import { get } from './client'
-import type { Namespace, Pod, Deployment, StatefulSet, DaemonSet, ConfigMap, Secret, PersistentVolume, PersistentVolumeClaim, StorageClass } from '../types/k8s'
+import type { Namespace, Pod, Deployment, StatefulSet, DaemonSet, ConfigMap, Secret, PersistentVolume, PersistentVolumeClaim, StorageClass, ClusterStats } from '../types/k8s'
+
+export function fetchClusterStats(): Promise<ClusterStats> {
+  return get<ClusterStats>('/api/v1/stats')
+}
+
+export function fetchResourceYAML(resource: string, name: string, namespace?: string): Promise<string> {
+  const params = namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''
+  return get<string>(`/api/v1/resources/${encodeURIComponent(resource)}/${encodeURIComponent(name)}${params}`)
+}
 
 export function fetchNamespaces(): Promise<Namespace[]> {
   return get<Namespace[]>('/api/v1/namespaces')

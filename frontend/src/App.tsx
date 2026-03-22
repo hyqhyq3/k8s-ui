@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import MainLayout from './layouts/MainLayout'
+import Dashboard from './pages/Dashboard'
 import NamespaceList from './pages/NamespaceList'
 import PodList from './pages/PodList'
 import DeploymentList from './pages/DeploymentList'
@@ -19,7 +20,8 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route element={<MainLayout />}>
-            <Route path="/" element={<Navigate to="/namespaces" replace />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/namespaces" element={<NamespaceList />} />
             <Route path="/pods" element={<PodList />} />
             <Route path="/deployments" element={<DeploymentList />} />

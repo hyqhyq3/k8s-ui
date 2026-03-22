@@ -90,3 +90,25 @@ export interface StorageClass {
   volumeBindingMode: string
   age: string
 }
+
+export interface ClusterStats {
+  nodes: number
+  namespaces: number
+  pods: number
+  deployments: number
+  statefulSets: number
+  daemonSets: number
+  pvs: number
+  pvcs: number
+  version: string
+  nodeStats: NodeStatInfo[]
+}
+
+export interface NodeStatInfo {
+  name: string
+  status: string
+  pods: number
+  podCapacity: number
+  cpuAllocatable: string
+  memoryAllocatable: string
+}

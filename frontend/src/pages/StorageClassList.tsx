@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
-import { Table, Space, message, Tag } from 'antd'
+import { Table, Tag, Space, Input, Button } from 'antd'
+import { ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { fetchStorageClasses } from '../api/k8s'
 import type { StorageClass } from '../types/k8s'
+import YAMLViewer from '../components/YAMLViewer'
+import { useResourceList } from '../hooks/useResourceList'
 
 const bindingModeColor: Record<string, string> = {
   Immediate: 'blue',
@@ -41,36 +43,44 @@ const columns: ColumnsType<StorageClass> = [
     dataIndex: 'age',
     key: 'age',
   },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 60,
+    render: (_: unknown, record: StorageClass) => (
+      <YAMLViewer resourceType="storageclasses" name={record.name} />
+    ),
+  },
 ]
 
 export default function StorageClassList() {
-  const [data, setData] = useState<StorageClass[]>([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true)
-      try {
-        const res = await fetchStorageClasses()
-        setData(res)
-      } catch {
-        message.error('获取 StorageClass 列表失败')
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadData()
-  }, [])
+  const { data, searchText, setSearchText, loading, refresh } =
+    useResourceList<StorageClass>({ fetchFn: fetchStorageClasses })
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <h2 style={{ margin: 0 }}>StorageClasses</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>StorageClasses</h2>
+        <Space>
+          <Input
+            placeholder="搜索名称..."
+            prefix={<SearchOutlined />}
+            allowClear
+            style={{ width: 200 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+          <Button icon={<ReloadOutlined />} onClick={refresh} loading={loading}>
+            刷新
+          </Button>
+        </Space>
+      </div>
       <Table
         columns={columns}
         dataSource={data}
         rowKey="name"
         loading={loading}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
       />
     </Space>
   )

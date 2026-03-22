@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yangqihuang/k8s-ui/internal/config"
@@ -31,6 +32,8 @@ func main() {
 	api := r.Group("/api/v1")
 	{
 		api.GET("/ping", h.Ping)
+		api.GET("/stats", h.GetClusterStats)
+		api.GET("/resources/:resource/:name", h.GetResourceYAML)
 		api.GET("/namespaces", h.ListNamespaces)
 		api.GET("/pods", h.ListPods)
 		api.GET("/deployments", h.ListDeployments)
@@ -42,6 +45,22 @@ func main() {
 		api.GET("/pvcs", h.ListPersistentVolumeClaims)
 		api.GET("/storageclasses", h.ListStorageClasses)
 	}
+
+	// 静态文件（Vite 构建产物在 assets 目录下）
+	r.Static("/assets", "./static/assets")
+
+	// 根级静态文件
+	r.StaticFile("/favicon.svg", "./static/favicon.svg")
+	r.StaticFile("/icons.svg", "./static/icons.svg")
+
+	// SPA fallback - 所有未匹配路由返回 index.html
+	r.NoRoute(func(c *gin.Context) {
+		if c.Request.Method == http.MethodGet {
+			c.File("./static/index.html")
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+	})
 
 	log.Printf("Server starting on :%s", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {

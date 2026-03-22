@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Table, Tag, Select, Space, message } from 'antd'
+import { Table, Tag, Space, Input, Select, Button } from 'antd'
+import { ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import { fetchPods, fetchNamespaces } from '../api/k8s'
+import { fetchPods } from '../api/k8s'
 import type { Pod } from '../types/k8s'
+import YAMLViewer from '../components/YAMLViewer'
+import { useResourceList } from '../hooks/useResourceList'
 
 const statusColorMap: Record<string, string> = {
   Running: 'green',
@@ -55,62 +57,52 @@ const columns: ColumnsType<Pod> = [
     dataIndex: 'age',
     key: 'age',
   },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 60,
+    render: (_: unknown, record: Pod) => (
+      <YAMLViewer resourceType="pods" name={record.name} namespace={record.namespace} />
+    ),
+  },
 ]
 
 export default function PodList() {
-  const [pods, setPods] = useState<Pod[]>([])
-  const [namespaces, setNamespaces] = useState<string[]>([])
-  const [selectedNs, setSelectedNs] = useState<string | undefined>(undefined)
-  const [loading, setLoading] = useState(false)
-
-  const loadNamespaces = async () => {
-    try {
-      const data = await fetchNamespaces()
-      setNamespaces(data.map((ns) => ns.name))
-    } catch {
-      message.error('获取 Namespace 列表失败')
-    }
-  }
-
-  const loadPods = useCallback(async () => {
-    setLoading(true)
-    try {
-      const data = await fetchPods(selectedNs)
-      setPods(data)
-    } catch {
-      message.error('获取 Pod 列表失败')
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedNs])
-
-  useEffect(() => {
-    loadNamespaces()
-  }, [])
-
-  useEffect(() => {
-    loadPods()
-  }, [loadPods])
+  const { data, namespaces, selectedNs, setSelectedNs, searchText, setSearchText, loading, refresh } =
+    useResourceList<Pod>({ fetchFn: fetchPods })
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>Pods</h2>
-        <Select
-          placeholder="按 Namespace 筛选"
-          allowClear
-          style={{ width: 240 }}
-          value={selectedNs}
-          onChange={setSelectedNs}
-          options={namespaces.map((ns) => ({ label: ns, value: ns }))}
-        />
+        <Space>
+          <Input
+            placeholder="搜索名称..."
+            prefix={<SearchOutlined />}
+            allowClear
+            style={{ width: 200 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+          <Select
+            placeholder="按 Namespace 筛选"
+            allowClear
+            style={{ width: 200 }}
+            value={selectedNs}
+            onChange={setSelectedNs}
+            options={namespaces.map((ns) => ({ label: ns, value: ns }))}
+          />
+          <Button icon={<ReloadOutlined />} onClick={refresh} loading={loading}>
+            刷新
+          </Button>
+        </Space>
       </div>
       <Table
         columns={columns}
-        dataSource={pods}
+        dataSource={data}
         rowKey={(row) => `${row.namespace}/${row.name}`}
         loading={loading}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
       />
     </Space>
   )
